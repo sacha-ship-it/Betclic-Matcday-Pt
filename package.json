@@ -1,5 +1,5 @@
 {
-  "name": "betclic-matchday",
+  "name": "betclic-matchday-portugal",
   "version": "3.0.0",
   "private": true,
   "main": "index.js",
@@ -7,8 +7,7 @@
     "node": "24.x"
   },
   "scripts": {
-    "start": "node index.js",
-    "deploy": "node -e \"console.log('Os comandos são atualizados automaticamente no arranque do bot.')\""
+    "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "14.26.4"
