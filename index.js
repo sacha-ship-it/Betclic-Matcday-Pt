@@ -24,12 +24,19 @@ const TZ = process.env.TIMEZONE || 'Europe/Lisbon';
 const UNIT = process.env.POINTS_LABEL || 'pontos';
 const ICON = process.env.POINTS_EMOJI || '🏆';
 
-const COLOR = /^#[a-f\d]{6}$/i.test(process.env.MATCHDAY_COLOR || '')
+const COLOR = /^#[a-f\d]{6}$/i.test(
+  process.env.MATCHDAY_COLOR || ''
+)
   ? process.env.MATCHDAY_COLOR
   : '#E10014';
 
 const BASE = { 1: 2, 2: 4, 3: 8 };
-const EMOJIS = { 1: '🤙', 2: '⚡', 3: '🔥' };
+
+const EMOJIS = {
+  1: '🤙',
+  2: '⚡',
+  3: '🔥',
+};
 
 const NAMES = {
   1: 'Chill',
@@ -55,39 +62,10 @@ const GROUPS = {
   weekend: '🔥 FIM DE SEMANA',
 };
 
-function fixtures(text) {
-  return String(text || '')
-    .split(/\s+\/\s+|\r?\n|\\n/)
-    .map(x => x.trim())
-    .filter(Boolean);
-}
-
-function programBlocks(p) {
-  return Object.entries(GROUPS)
-    .filter(([key]) => fixtures(p.blocks?.[key]).length);
-}
-
-function validateProgram(p) {
-  dateKey(p.start);
-  dateKey(p.end);
-
-  need(
-    p.start <= p.end,
-    'A data de início deve ser anterior ou igual à data de fim.',
-  );
-
-  for (const [key] of programBlocks(p)) {
-    need(
-      fixtures(p.blocks[key])
-        .map(x => '• ' + safe(x))
-        .join('\n').length <= 1000,
-      `O grupo ${key} é demasiado longo: encurta os nomes ou os horários.`,
-    );
-  }
-}
-
 const quiet = { parse: [] };
-const uid = () => randomUUID().replaceAll('-', '').slice(0, 16);
+
+const uid = () =>
+  randomUUID().replaceAll('-', '').slice(0, 16);
 
 class UserError extends Error {}
 
@@ -95,26 +73,60 @@ function need(ok, text) {
   if (!ok) throw new UserError(text);
 }
 
-const safe = x =>
-  escapeMarkdown(String(x)).replaceAll('@', '@\u200b');
+const safe = value =>
+  escapeMarkdown(String(value)).replaceAll('@', '@\u200b');
 
-const digest = x =>
-  createHash('sha256').update(JSON.stringify(x)).digest('hex');
+const digest = value =>
+  createHash('sha256')
+    .update(JSON.stringify(value))
+    .digest('hex');
 
-const copy = x => structuredClone(x);
+const copy = value => structuredClone(value);
 
-const clean = (x, max, label) => {
-  const s = String(x || '')
+const clean = (value, max, label) => {
+  const text = String(value || '')
     .trim()
     .replace(/[\u2013\u2014]/g, '-');
 
   need(
-    s.length > 0 && s.length <= max,
-    `${label}: entre 1 e ${max} caracteres.`,
+    text.length > 0 && text.length <= max,
+    `${label}: entre 1 e ${max} caracteres.`
   );
 
-  return s;
+  return text;
 };
+
+function fixtures(text) {
+  return String(text || '')
+    .split(/\s+\/\s+|\r?\n|\\n/)
+    .map(value => value.trim())
+    .filter(Boolean);
+}
+
+function programBlocks(program) {
+  return Object.entries(GROUPS).filter(
+    ([key]) => fixtures(program.blocks?.[key]).length
+  );
+}
+
+function validateProgram(program) {
+  dateKey(program.start);
+  dateKey(program.end);
+
+  need(
+    program.start <= program.end,
+    'A data de início deve ser anterior ou igual à data de fim.'
+  );
+
+  for (const [key] of programBlocks(program)) {
+    need(
+      fixtures(program.blocks[key])
+        .map(value => '• ' + safe(value))
+        .join('\n').length <= 1000,
+      `O grupo ${key} é demasiado longo: encurta os nomes ou os horários.`
+    );
+  }
+}
 
 function parts(ms) {
   return Object.fromEntries(
@@ -128,8 +140,8 @@ function parts(ms) {
       hourCycle: 'h23',
     })
       .formatToParts(new Date(ms))
-      .filter(p => p.type !== 'literal')
-      .map(p => [p.type, p.value]),
+      .filter(part => part.type !== 'literal')
+      .map(part => [part.type, part.value])
   );
 }
 
@@ -138,34 +150,38 @@ function day(ms) {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-function dateKey(s) {
+function dateKey(text) {
   need(
-    /^\d{4}-\d{2}-\d{2}$/.test(s || ''),
-    'Formato da data: AAAA-MM-DD.',
+    /^\d{4}-\d{2}-\d{2}$/.test(text || ''),
+    'Formato da data: AAAA-MM-DD.'
   );
 
-  const t = Date.parse(s + 'T12:00:00Z');
+  const timestamp = Date.parse(text + 'T12:00:00Z');
 
   need(
-    Number.isFinite(t) &&
-      new Date(t).toISOString().slice(0, 10) === s,
-    'Data inválida.',
+    Number.isFinite(timestamp) &&
+      new Date(timestamp).toISOString().slice(0, 10) === text,
+    'Data inválida.'
   );
 
-  return s;
+  return text;
 }
 
-function shift(s, n) {
+function shift(text, count) {
   return new Date(
-    Date.parse(dateKey(s) + 'T12:00:00Z') + n * 86400000,
+    Date.parse(dateKey(text) + 'T12:00:00Z') +
+      count * 86400000
   )
     .toISOString()
     .slice(0, 10);
 }
 
-function monday(s) {
-  const w = new Date(s + 'T12:00:00Z').getUTCDay();
-  return shift(s, -(w === 0 ? 6 : w - 1));
+function monday(text) {
+  const weekday = new Date(
+    dateKey(text) + 'T12:00:00Z'
+  ).getUTCDay();
+
+  return shift(text, -(weekday === 0 ? 6 : weekday - 1));
 }
 
 function sportDay(ms = Date.now()) {
@@ -179,25 +195,18 @@ function time(ms) {
   return `${p.day}/${p.month}/${p.year} às ${p.hour}:${p.minute}`;
 }
 
-function dateLabel(s) {
-  return new Intl.DateTimeFormat('pt-PT', {
-    timeZone: 'UTC',
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(new Date(s + 'T12:00:00Z'));
-}
-
-function parseTime(s) {
-  let text = String(s || '').trim();
+function parseTime(value) {
+  let text = String(value || '').trim();
 
   if (/^\d{2}:\d{2} \d{4}-\d{2}-\d{2}$/.test(text)) {
     text = text.slice(6) + ' ' + text.slice(0, 5);
   }
 
   need(
-    /^\d{4}-\d{2}-\d{2} (?:[01]\d|2[0-3]):[0-5]\d$/.test(text),
-    'Formato da hora: AAAA-MM-DD HH:mm, por exemplo 2026-11-10 09:00.',
+    /^\d{4}-\d{2}-\d{2} (?:[01]\d|2[0-3]):[0-5]\d$/.test(
+      text
+    ),
+    'Formato da hora: AAAA-MM-DD HH:mm, por exemplo 2026-11-10 09:00.'
   );
 
   dateKey(text.slice(0, 10));
@@ -205,14 +214,15 @@ function parseTime(s) {
   const utc = Date.parse(text.replace(' ', 'T') + ':00Z');
   const matches = [];
 
-  for (let n = -840; n <= 840; n += 15) {
-    const t = utc + n * 60000;
-    const p = parts(t);
+  for (let offset = -840; offset <= 840; offset += 15) {
+    const timestamp = utc + offset * 60000;
+    const p = parts(timestamp);
 
     if (
-      `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}` === text
+      `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}` ===
+      text
     ) {
-      matches.push(t);
+      matches.push(timestamp);
     }
   }
 
@@ -220,64 +230,66 @@ function parseTime(s) {
     matches.length === 1,
     matches.length
       ? 'Hora ambígua devido à mudança de hora. Escolhe outro horário.'
-      : 'Esta data ou hora não existe.',
+      : 'Esta data ou hora não existe.'
   );
 
   return matches[0];
 }
 
-function imageURL(s) {
-  if (!s) return '';
+function imageURL(text) {
+  if (!text) return '';
 
-  let u;
+  let url;
 
   try {
-    u = new URL(s);
+    url = new URL(text);
   } catch {
     throw new UserError('URL da imagem inválido.');
   }
 
   need(
-    u.protocol === 'https:' &&
-      !u.username &&
-      !u.password &&
-      s.length <= 1000,
-    'Utiliza um URL HTTPS de imagem com menos de 1 000 caracteres.',
+    url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      text.length <= 1000,
+    'Utiliza um URL HTTPS de imagem com menos de 1 000 caracteres.'
   );
 
-  return s;
+  return text;
 }
 
-function odds(s) {
-  const n = Number(String(s).trim().replace(',', '.'));
+function odds(value) {
+  const number = Number(
+    String(value).trim().replace(',', '.')
+  );
 
   need(
-    Number.isFinite(n) && n >= 1 && n <= 10000,
-    'Odd inválida: utiliza, por exemplo, 1,80.',
+    Number.isFinite(number) && number >= 1 && number <= 10000,
+    'Odd inválida: utiliza, por exemplo, 1,80.'
   );
 
-  return String(s).trim();
+  return String(value).trim();
 }
 
-const closeAt = m => Date.parse(m.closingTimeUTC);
+const closeAt = match => Date.parse(match.closingTimeUTC);
 
-function isOpen(m, now = Date.now()) {
+function isOpen(match, now = Date.now()) {
   return (
-    m.status === 'open' &&
-    m.result === null &&
-    now < closeAt(m)
+    match.status === 'open' &&
+    match.result === null &&
+    now < closeAt(match)
   );
 }
 
-function getMatch(s, id) {
-  const m = s.matches[id];
+function getMatch(state, id) {
+  const match = state.matches[id];
 
   need(
-    m && m.status !== 'deleted',
-    'Jogo não encontrado. Utiliza /list-matches para consultar o ID.',
+    match && match.status !== 'deleted',
+    'Jogo não encontrado. Utiliza /list-matches para consultar o ID.'
   );
 
-  return m;
+  return match;
 }
 
 function initial() {
@@ -293,92 +305,95 @@ function initial() {
   };
 }
 
-function migrate(s) {
+function migrate(state) {
   need(
-    s &&
-      s.matches &&
-      s.bets &&
-      s.users &&
-      (!s.schema || s.schema === 3),
-    'Formato de cópia de segurança desconhecido. Não apagues o ficheiro db.json.',
+    state &&
+      state.matches &&
+      state.bets &&
+      state.users &&
+      (!state.schema || state.schema === 3),
+    'Formato de cópia de segurança desconhecido. Não apagues o ficheiro db.json.'
   );
 
-  s.schema = 3;
-  s.programs ||= {};
-  s.boosts ||= {};
-  s.pending ||= {};
-  s.archives ||= [];
+  state.schema = 3;
+  state.programs ||= {};
+  state.boosts ||= {};
+  state.pending ||= {};
+  state.archives ||= [];
 
-  for (const m of Object.values(s.matches)) {
+  for (const match of Object.values(state.matches)) {
     need(
-      Number.isFinite(closeAt(m)),
-      `Data de fecho inválida no jogo ${m.id}.`,
+      Number.isFinite(closeAt(match)),
+      `Data de fecho inválida no jogo ${match.id}.`
     );
 
-    m.result =
-      m.result == null
+    match.result =
+      match.result == null
         ? null
-        : Array.isArray(m.result)
-          ? m.result
-          : [m.result];
+        : Array.isArray(match.result)
+          ? match.result
+          : [match.result];
 
-    m.publishAt ??= m.messageId ? 0 : Date.now();
-    m.date ||= sportDay(closeAt(m));
-    m.revision ||= 1;
-    m.version ||= 1;
-    m.description ||= '';
-    m.roleId ||= null;
-    m.imageUrl ||= '';
-    m.dirty = true;
-    m.published ||= Boolean(m.messageId);
-    m.imageFile ||= '';
+    match.publishAt ??= match.messageId ? 0 : Date.now();
+    match.date ||= sportDay(closeAt(match));
+    match.revision ||= 1;
+    match.version ||= 1;
+    match.description ||= '';
+    match.roleId ||= null;
+    match.imageUrl ||= '';
+    match.dirty = true;
+    match.published ||= Boolean(match.messageId);
+    match.imageFile ||= '';
 
-    for (const [id, b] of Object.entries(s.bets[m.id] || {})) {
-      b.revision ||= m.revision;
+    for (const [id, bet] of Object.entries(
+      state.bets[match.id] || {}
+    )) {
+      bet.revision ||= match.revision;
 
-      if (b.boosted) {
-        const key = b.boostDay || m.date;
-        s.boosts[key] ||= {};
-        s.boosts[key][id] ||= m.id;
+      if (bet.boosted) {
+        const key = bet.boostDay || match.date;
+        state.boosts[key] ||= {};
+        state.boosts[key][id] ||= match.id;
       }
     }
   }
 
-  for (const p of Object.values(s.programs)) {
-    if (!p.blocks) {
-      p.blocks = Object.fromEntries(
-        Object.keys(GROUPS).map(key => [key, '']),
+  for (const program of Object.values(state.programs)) {
+    if (!program.blocks) {
+      program.blocks = Object.fromEntries(
+        Object.keys(GROUPS).map(key => [key, ''])
       );
 
-      const selected = Object.values(s.matches)
+      const selected = Object.values(state.matches)
         .filter(
-          m =>
-            m.status !== 'deleted' &&
-            m.channelId === (p.matchesChannelId || p.channelId) &&
-            m.date >= p.start &&
-            m.date <= p.end,
+          match =>
+            match.status !== 'deleted' &&
+            match.channelId ===
+              (program.matchesChannelId || program.channelId) &&
+            match.date >= program.start &&
+            match.date <= program.end
         )
         .sort((a, b) => closeAt(a) - closeAt(b));
 
-      for (const m of selected) {
+      for (const match of selected) {
         const weekday = new Date(
-          m.date + 'T12:00:00Z',
+          match.date + 'T12:00:00Z'
         ).getUTCDay();
 
         const key =
-          ({ 2: 'mardi', 3: 'mercredi', 4: 'jeudi' })[weekday] ||
+          { 2: 'mardi', 3: 'mercredi', 4: 'jeudi' }[weekday] ||
           'weekend';
 
-        p.blocks[key] +=
-          (p.blocks[key] ? ' / ' : '') + m.title;
+        program.blocks[key] +=
+          (program.blocks[key] ? ' / ' : '') + match.title;
       }
     }
 
-    p.version ||= 1;
-    p.dirty = true;
+    program.version ||= 1;
+    program.dirty = true;
   }
 
-  return s;
+  return state;
 }
 
 class Store {
@@ -393,30 +408,34 @@ class Store {
 
     try {
       this.state = migrate(
-        JSON.parse(await fs.readFile(this.file, 'utf8')),
+        JSON.parse(await fs.readFile(this.file, 'utf8'))
       );
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw e;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
       this.state = initial();
     }
 
     await this.write(this.state);
   }
 
-  async write(s) {
-    const h = await fs.open(this.file + '.tmp', 'w', 0o600);
+  async write(state) {
+    const handle = await fs.open(
+      this.file + '.tmp',
+      'w',
+      0o600
+    );
 
     try {
-      await h.writeFile(JSON.stringify(s));
-      await h.sync();
+      await handle.writeFile(JSON.stringify(state));
+      await handle.sync();
     } finally {
-      await h.close();
+      await handle.close();
     }
 
     try {
       await fs.copyFile(this.file, this.file + '.bak');
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw e;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
     }
 
     await fs.rename(this.file + '.tmp', this.file);
@@ -430,10 +449,12 @@ class Store {
   change(fn) {
     const task = this.queue.then(async () => {
       const next = copy(this.state);
-      const r = await fn(next);
+      const returned = await fn(next);
+
       await this.write(next);
       this.state = next;
-      return copy(r);
+
+      return copy(returned);
     });
 
     this.queue = task.catch(() => {});
@@ -441,98 +462,110 @@ class Store {
   }
 }
 
-function earned(m, b) {
+function earned(match, bet) {
   return (
-    m.status !== 'deleted' &&
-    b.revision === m.revision &&
-    m.result?.includes(b.choice)
+    match.status !== 'deleted' &&
+    bet.revision === match.revision &&
+    match.result?.includes(bet.choice)
   )
-    ? BASE[b.choice] * (b.boosted ? 2 : 1)
+    ? BASE[bet.choice] * (bet.boosted ? 2 : 1)
     : 0;
 }
 
-function rank(s, range = {}) {
+function rank(state, range = {}) {
   const users = new Map();
 
-  for (const m of Object.values(s.matches)) {
+  for (const match of Object.values(state.matches)) {
     if (
-      m.status === 'deleted' ||
-      (range.start && m.date < range.start) ||
-      (range.end && m.date > range.end)
+      match.status === 'deleted' ||
+      (range.start && match.date < range.start) ||
+      (range.end && match.date > range.end)
     ) {
       continue;
     }
 
-    for (const [id, b] of Object.entries(s.bets[m.id] || {})) {
-      if (b.revision !== m.revision) continue;
+    for (const [id, bet] of Object.entries(
+      state.bets[match.id] || {}
+    )) {
+      if (bet.revision !== match.revision) continue;
 
-      const r = users.get(id) || {
+      const entry = users.get(id) || {
         id,
-        name: s.users[id]?.username || b.username || id,
+        name:
+          state.users[id]?.username ||
+          bet.username ||
+          id,
         points: 0,
         first: Infinity,
       };
 
-      r.points += earned(m, b);
-      r.first = Math.min(r.first, b.placedAt || Infinity);
-      users.set(id, r);
+      entry.points += earned(match, bet);
+      entry.first = Math.min(
+        entry.first,
+        bet.placedAt || Infinity
+      );
+
+      users.set(id, entry);
     }
   }
 
   return [...users.values()]
-    .filter(r => r.points > 0)
+    .filter(entry => entry.points > 0)
     .sort(
       (a, b) =>
         b.points - a.points ||
         a.first - b.first ||
-        a.id.localeCompare(b.id),
+        a.id.localeCompare(b.id)
     );
 }
 
-function boostAvailable(s, userId, now = Date.now()) {
+function boostAvailable(state, userId, now = Date.now()) {
   const key = sportDay(now);
 
   return (
-    !s.boosts[key]?.[userId] &&
-    s.users[userId]?.boostUsedToday !== key
+    !state.boosts[key]?.[userId] &&
+    state.users[userId]?.boostUsedToday !== key
   );
 }
 
 function place(
-  s,
-  mid,
+  state,
+  matchId,
   userId,
   choice,
   boost,
   revision,
   username,
-  now = Date.now(),
+  now = Date.now()
 ) {
-  const m = getMatch(s, mid);
-
-  need(isOpen(m, now), 'As participações estão encerradas.');
+  const match = getMatch(state, matchId);
 
   need(
-    m.revision === revision && BASE[choice],
-    'Esta opção foi alterada. Volta à mensagem do jogo.',
+    isOpen(match, now),
+    'As participações estão encerradas.'
   );
 
   need(
-    !s.bets[mid]?.[userId],
-    'Já participaste. O teu palpite não pode ser alterado.',
+    match.revision === revision && BASE[choice],
+    'Esta opção foi alterada. Volta à mensagem do jogo.'
   );
 
   need(
-    !boost || boostAvailable(s, userId, now),
-    'Já utilizaste o teu boost nesta jornada.',
+    !state.bets[matchId]?.[userId],
+    'Já participaste. O teu palpite não pode ser alterado.'
+  );
+
+  need(
+    !boost || boostAvailable(state, userId, now),
+    'Já utilizaste o teu boost nesta jornada.'
   );
 
   const key = sportDay(now);
 
-  s.bets[mid] ||= {};
-  s.users[userId] ||= { totalPoints: 0 };
+  state.bets[matchId] ||= {};
+  state.users[userId] ||= { totalPoints: 0 };
 
-  s.bets[mid][userId] = {
+  state.bets[matchId][userId] = {
     choice,
     boosted: boost,
     revision,
@@ -542,51 +575,55 @@ function place(
     points: null,
   };
 
-  Object.assign(s.users[userId], {
+  Object.assign(state.users[userId], {
     username,
-    firstBetAt: s.users[userId].firstBetAt || now,
+    firstBetAt: state.users[userId].firstBetAt || now,
   });
 
   if (boost) {
-    s.boosts[key] ||= {};
-    s.boosts[key][userId] = mid;
-    s.users[userId].boostUsedToday = key;
+    state.boosts[key] ||= {};
+    state.boosts[key][userId] = matchId;
+    state.users[userId].boostUsedToday = key;
   }
 }
 
-function result(s, mid, winners) {
-  const m = getMatch(s, mid);
+function result(state, matchId, winners) {
+  const match = getMatch(state, matchId);
 
-  m.result = winners;
-  m.status = 'closed';
-  m.dirty = true;
-  m.version++;
+  match.result = winners;
+  match.status = 'closed';
+  match.dirty = true;
+  match.version++;
 
-  for (const b of Object.values(s.bets[mid] || {})) {
-    b.points = earned(m, b);
+  for (const bet of Object.values(
+    state.bets[matchId] || {}
+  )) {
+    bet.points = earned(match, bet);
   }
 
-  for (const u of Object.values(s.users)) {
-    u.totalPoints = 0;
+  for (const user of Object.values(state.users)) {
+    user.totalPoints = 0;
   }
 
-  for (const r of rank(s)) {
-    if (s.users[r.id]) {
-      s.users[r.id].totalPoints = r.points;
+  for (const entry of rank(state)) {
+    if (state.users[entry.id]) {
+      state.users[entry.id].totalPoints = entry.points;
     }
   }
 }
 
-function rangeOptions(o) {
-  const start = o.getString('debut');
-  const end = o.getString('fin');
+function rangeOptions(options) {
+  const start = options.getString('debut');
+  const end = options.getString('fin');
 
   if (start || end) {
-    need(start && end, 'Preenche os campos debut E fin.');
+    need(
+      start && end,
+      'Preenche os campos debut E fin.'
+    );
 
     dateKey(start);
     dateKey(end);
-
     need(start <= end, 'Período inválido.');
 
     return {
@@ -596,23 +633,28 @@ function rangeOptions(o) {
     };
   }
 
-  const type = o.getString('type') || 'week';
+  const type = options.getString('type') || 'week';
 
   if (type === 'general') {
     return { label: 'geral' };
   }
 
   if (type === 'today') {
-    const d = sportDay();
-    return { start: d, end: d, label: `de ${d}` };
+    const date = sportDay();
+
+    return {
+      start: date,
+      end: date,
+      label: `de ${date}`,
+    };
   }
 
-  const d = monday(day(Date.now()));
+  const date = monday(day(Date.now()));
 
   return {
-    start: d,
-    end: shift(d, 6),
-    label: `de ${d} a ${shift(d, 6)}`,
+    start: date,
+    end: shift(date, 6),
+    label: `de ${date} a ${shift(date, 6)}`,
   };
 }
 
@@ -627,7 +669,7 @@ const button = (
   id,
   label,
   style = ButtonStyle.Secondary,
-  disabled = false,
+  disabled = false
 ) =>
   new ButtonBuilder()
     .setCustomId(id)
@@ -638,26 +680,30 @@ const button = (
 const row = (...buttons) =>
   new ActionRowBuilder().addComponents(buttons);
 
-function media(x, e) {
-  if (x.imageFile) {
-    const name = path.basename(x.imageFile);
-    e.setImage(`attachment://${name}`);
+function media(item, card) {
+  if (item.imageFile) {
+    const name = path.basename(item.imageFile);
+
+    card.setImage(`attachment://${name}`);
 
     return {
-      files: [new AttachmentBuilder(x.imageFile, { name })],
+      files: [
+        new AttachmentBuilder(item.imageFile, { name }),
+      ],
     };
   }
 
-  if (x.imageUrl) e.setImage(x.imageUrl);
+  if (item.imageUrl) card.setImage(item.imageUrl);
+
   return {};
 }
 
-function longText(e, intro, suffix) {
-  e.setDescription(suffix || null);
+function longText(card, intro, suffix) {
+  card.setDescription(suffix || null);
 
   const budget = Math.min(
     4096 - suffix.length,
-    6000 - e.length,
+    6000 - card.length
   );
 
   let content = '';
@@ -668,7 +714,7 @@ function longText(e, intro, suffix) {
 
     need(
       required <= 1900,
-      'A mensagem é demasiado longa para o Discord: encurta o texto ou as restantes informações.',
+      'A mensagem é demasiado longa para o Discord: encurta o texto ou as restantes informações.'
     );
 
     const paragraph = intro.lastIndexOf('\n', 1900);
@@ -683,136 +729,163 @@ function longText(e, intro, suffix) {
 
   need(
     rest.length <= budget,
-    'A mensagem formatada é demasiado longa: encurta ligeiramente o texto.',
+    'A mensagem formatada é demasiado longa: encurta ligeiramente o texto.'
   );
 
-  e.setDescription(rest + suffix);
+  card.setDescription(rest + suffix);
+
   return content;
 }
 
-function matchCard(m) {
-  const open = isOpen(m);
-  const e = embed(m.title).setColor(open ? COLOR : 0x7F1D1D);
+function matchCard(match) {
+  const open = isOpen(match);
 
-  const intro = m.description
-    ? m.description
-    : 'Escolhe o teu palpite e tenta chegar ao topo da classificação!';
+  const card = embed(match.title)
+    .setColor(open ? COLOR : 0x7F1D1D);
+
+  const intro =
+    match.description ||
+    'Escolhe o teu palpite e tenta chegar ao topo da classificação!';
 
   const lines = [
     '',
     '',
-    `🕒 **Fim das participações: ${time(closeAt(m))}**`,
+    `🕒 **Fim das participações: ${time(closeAt(match))}**`,
     '',
   ];
 
-  for (const n of [1, 2, 3]) {
+  for (const number of [1, 2, 3]) {
     lines.push(
-      `${EMOJIS[n]} **${safe(m['choice' + n + 'Label'])}**`,
-      `*Odd: ${safe(m['choice' + n + 'Odds'])}* · ${ICON} **${BASE[n]} ${UNIT}**`,
-      '',
+      `${EMOJIS[number]} **${safe(
+        match['choice' + number + 'Label']
+      )}**`,
+      `*Odd: ${safe(
+        match['choice' + number + 'Odds']
+      )}* · ${ICON} **${BASE[number]} ${UNIT}**`,
+      ''
     );
   }
 
   lines.push(
     '⚡ Um boost por jornada para duplicar os pontos que ganhares.',
-    'Depois de confirmado, o teu palpite é definitivo.',
+    'Depois de confirmado, o teu palpite é definitivo.'
   );
 
   if (!open) {
     lines.push(
       '',
-      m.result
+      match.result
         ? '🔒 Resultados registados.'
-        : '🔒 As participações estão encerradas.',
+        : '🔒 As participações estão encerradas.'
     );
   }
 
-  e.setFooter({
-    text: `Betclic MatchDay | Match ${m.id}`,
+  card.setFooter({
+    text: `Betclic MatchDay | Match ${match.id}`,
   });
 
-  const content = longText(e, intro, lines.join('\n'));
+  const content = longText(
+    card,
+    intro,
+    lines.join('\n')
+  );
 
   return {
     content,
-    embeds: [e],
-    ...media(m, e),
+    embeds: [card],
+    ...media(match, card),
     components: [
       row(
-        ...[1, 2, 3].map(n =>
+        ...[1, 2, 3].map(number =>
           button(
-            `md:bet:${m.id}:${n}:${m.revision}`,
-            `${EMOJIS[n]} ${NAMES[n]} (+${BASE[n]} ${UNIT})`,
+            `md:bet:${match.id}:${number}:${match.revision}`,
+            `${EMOJIS[number]} ${NAMES[number]} (+${BASE[number]} ${UNIT})`,
             [
               0,
               ButtonStyle.Secondary,
               ButtonStyle.Primary,
               ButtonStyle.Danger,
-            ][n],
-            !open,
-          ),
+            ][number],
+            !open
+          )
         ),
-        button(`md:my:${m.id}`, '📋 A minha escolha'),
+        button(
+          `md:my:${match.id}`,
+          '📋 A minha escolha'
+        )
       ),
     ],
     allowedMentions: quiet,
   };
 }
 
-function myCard(s, m, userId) {
-  const b = s.bets[m.id]?.[userId];
+function myCard(state, match, userId) {
+  const bet = state.bets[match.id]?.[userId];
 
-  if (!b) {
+  if (!bet) {
     return {
-      content: 'Ainda não confirmaste nenhum palpite neste jogo.',
+      content:
+        'Ainda não confirmaste nenhum palpite neste jogo.',
       embeds: [],
       components: [],
     };
   }
 
-  const e = embed('✅ O teu palpite foi registado')
+  const card = embed('✅ O teu palpite foi registado')
     .setColor(0x22C55E)
     .setDescription(
       [
-        `**${safe(m.title)}**`,
+        `**${safe(match.title)}**`,
         '',
-        `${EMOJIS[b.choice]} **${safe(m['choice' + b.choice + 'Label'])}**`,
+        `${EMOJIS[bet.choice]} **${safe(
+          match['choice' + bet.choice + 'Label']
+        )}**`,
         '',
-        `${ICON} **${BASE[b.choice] * (b.boosted ? 2 : 1)} ${UNIT}** se a tua escolha for vencedora.${b.boosted ? ' Boost x2 ativado.' : ''}`,
+        `${ICON} **${
+          BASE[bet.choice] * (bet.boosted ? 2 : 1)
+        } ${UNIT}** se a tua escolha for vencedora.${
+          bet.boosted ? ' Boost x2 ativado.' : ''
+        }`,
         '',
         'A tua escolha é definitiva.',
-        m.result
-          ? `\nResultado: **${earned(m, b)} ${UNIT} ganhos**.`
+        match.result
+          ? `\nResultado: **${earned(
+              match,
+              bet
+            )} ${UNIT} ganhos**.`
           : '',
-      ].join('\n'),
+      ].join('\n')
     );
 
   return {
     content: '',
-    embeds: [e],
+    embeds: [card],
     components: [],
     allowedMentions: quiet,
   };
 }
 
-function weekMatches(s, p) {
-  return programBlocks(p).flatMap(([key]) =>
-    fixtures(p.blocks[key]).map(title => ({
+function weekMatches(state, program) {
+  return programBlocks(program).flatMap(([key]) =>
+    fixtures(program.blocks[key]).map(title => ({
       title,
       group: key,
-    })),
+    }))
   );
 }
 
-function weekCard(s, p) {
-  const groups = programBlocks(p);
-  const custom = Boolean(String(p.description || '').trim());
+function weekCard(state, program) {
+  const groups = programBlocks(program);
+
+  const custom = Boolean(
+    String(program.description || '').trim()
+  );
 
   const intro = custom
-    ? p.description
+    ? program.description
     : EDITION.description;
 
-  const e = embed(p.title);
+  const card = embed(program.title);
 
   for (const [key, label] of custom ? [] : groups) {
     const date =
@@ -826,14 +899,21 @@ function weekCard(s, p) {
             }[key];
 
             for (
-              let d = p.start;
-              d <= p.end;
-              d = shift(d, 1)
+              let date = program.start;
+              date <= program.end;
+              date = shift(date, 1)
             ) {
               if (
-                new Date(d + 'T12:00:00Z').getUTCDay() === target
+                new Date(
+                  date + 'T12:00:00Z'
+                ).getUTCDay() === target
               ) {
-                return ' ' + d.slice(8) + '/' + d.slice(5, 7);
+                return (
+                  ' ' +
+                  date.slice(8) +
+                  '/' +
+                  date.slice(5, 7)
+                );
               }
             }
 
@@ -843,10 +923,13 @@ function weekCard(s, p) {
     const chunks = [];
     let chunk = '';
 
-    for (const fixture of fixtures(p.blocks[key])) {
+    for (const fixture of fixtures(program.blocks[key])) {
       const line = '• ' + safe(fixture);
 
-      if (chunk && chunk.length + line.length + 1 > 1024) {
+      if (
+        chunk &&
+        chunk.length + line.length + 1 > 1024
+      ) {
         chunks.push(chunk);
         chunk = '';
       }
@@ -856,19 +939,22 @@ function weekCard(s, p) {
 
     if (chunk) chunks.push(chunk);
 
-    chunks.forEach((value, n) =>
-      e.addFields({
-        name: label + date + (n ? ' (continuação)' : ''),
+    chunks.forEach((value, index) => {
+      card.addFields({
+        name:
+          label +
+          date +
+          (index ? ' (continuação)' : ''),
         value: value + '\n\u200b',
         inline: false,
-      }),
-    );
+      });
+    });
   }
 
-  if (!custom && p.rulesChannelId) {
-    e.addFields({
+  if (!custom && program.rulesChannelId) {
+    card.addFields({
       name: '📋 Regulamento',
-      value: `<#${p.rulesChannelId}>`,
+      value: `<#${program.rulesChannelId}>`,
     });
   }
 
@@ -876,16 +962,16 @@ function weekCard(s, p) {
     ? ' | Feebets = créditos de jogo não levantáveis'
     : '';
 
-  e.setFooter({
-    text: `Betclic MatchDay | Programme ${p.id}${disclaimer}`,
+  card.setFooter({
+    text: `Betclic MatchDay | Programme ${program.id}${disclaimer}`,
   });
 
-  const content = longText(e, intro, '');
+  const content = longText(card, intro, '');
 
   return {
     content,
-    embeds: [e],
-    ...media(p, e),
+    embeds: [card],
+    ...media(program, card),
     components: [],
     allowedMentions: quiet,
   };
@@ -926,13 +1012,17 @@ function staffCard(item, kind) {
         name: 'Jornada desportiva',
         value: item.date,
         inline: true,
-      },
+      }
     );
 
-    for (const n of [1, 2, 3]) {
+    for (const number of [1, 2, 3]) {
       fields.push({
-        name: `${EMOJIS[n]} Opção ${n} · ${BASE[n]} ${UNIT}`,
-        value: `${safe(item[`choice${n}Label`])}\nOdd: **${safe(item[`choice${n}Odds`])}**`,
+        name: `${EMOJIS[number]} Opção ${number} · ${BASE[number]} ${UNIT}`,
+        value: `${safe(
+          item[`choice${number}Label`]
+        )}\nOdd: **${safe(
+          item[`choice${number}Odds`]
+        )}**`,
       });
     }
 
@@ -969,13 +1059,17 @@ function staffCard(item, kind) {
           item.result === null
             ? 'Pendente'
             : item.result.length
-              ? item.result.map(n => `Opção ${n}`).join(', ')
+              ? item.result
+                  .map(number => `Opção ${number}`)
+                  .join(', ')
               : 'Nenhuma opção vencedora',
       },
       {
         name: 'Editar este jogo',
-        value: `Utiliza **/edit-match** com match_id: \`${item.id}\`\nPodes editar o texto, o título, a imagem e os parâmetros disponíveis. As opções, odds e jornada ficam bloqueadas após a primeira participação.`,
-      },
+        value:
+          `Utiliza **/edit-match** com match_id: \`${item.id}\`\n` +
+          'Podes editar o texto, o título, a imagem e os parâmetros disponíveis. As opções, odds e jornada ficam bloqueadas após a primeira participação.',
+      }
     );
   } else {
     fields.push(
@@ -985,8 +1079,10 @@ function staffCard(item, kind) {
       },
       {
         name: 'Canal dos jogos',
-        value: `<#${item.matchesChannelId || item.channelId}>`,
-      },
+        value: `<#${
+          item.matchesChannelId || item.channelId
+        }>`,
+      }
     );
   }
 
@@ -1002,45 +1098,48 @@ function staffCard(item, kind) {
   };
 }
 
-function rankCard(s, r, page = 0) {
-  const all = rank(s, r);
+function rankCard(state, range, page = 0) {
+  const all = rank(state, range);
   const pages = Math.max(1, Math.ceil(all.length / 20));
 
   page = Math.max(
     0,
-    Math.min(Number(page) || 0, pages - 1),
+    Math.min(Number(page) || 0, pages - 1)
   );
 
-  const pending = Object.values(s.matches).filter(
-    m =>
-      m.status !== 'deleted' &&
-      (!r.start || m.date >= r.start) &&
-      (!r.end || m.date <= r.end) &&
-      m.result === null,
+  const pending = Object.values(state.matches).filter(
+    match =>
+      match.status !== 'deleted' &&
+      (!range.start || match.date >= range.start) &&
+      (!range.end || match.date <= range.end) &&
+      match.result === null
   ).length;
 
-  const e = embed(`🏆 Classificação ${r.label}`)
+  const card = embed(`🏆 Classificação ${range.label}`)
     .setDescription(
       all
         .slice(page * 20, page * 20 + 20)
         .map(
-          (u, n) =>
-            `${['🥇', '🥈', '🥉'][page * 20 + n] || `**${page * 20 + n + 1}.**`} <@${u.id}> | ${ICON} **${u.points} ${UNIT}**`,
+          (user, index) =>
+            `${
+              ['🥇', '🥈', '🥉'][page * 20 + index] ||
+              `**${page * 20 + index + 1}.**`
+            } <@${user.id}> | ${ICON} **${user.points} ${UNIT}**`
         )
-        .join('\n') || 'Ainda não há pontos.',
+        .join('\n') || 'Ainda não há pontos.'
     )
     .setFooter({
       text: `Betclic MatchDay | Página ${page + 1}/${pages}`,
     });
 
   if (pending) {
-    e.addFields({
+    card.addFields({
       name: '⏳ Classificação provisória',
       value: `${pending} resultado(s) pendente(s) neste período.`,
     });
   }
 
-  e.addFields({
+  card.addFields({
     name: 'Em caso de empate',
     value:
       'Em caso de empate, fica à frente quem participou primeiro no período.',
@@ -1048,23 +1147,23 @@ function rankCard(s, r, page = 0) {
 
   return {
     content: '',
-    embeds: [e],
+    embeds: [card],
     components:
       pages > 1
         ? [
             row(
               button(
-                `md:rank:${r.start || 'all'}:${r.end || 'all'}:${page - 1}`,
+                `md:rank:${range.start || 'all'}:${range.end || 'all'}:${page - 1}`,
                 '←',
-                2,
-                page === 0,
+                ButtonStyle.Secondary,
+                page === 0
               ),
               button(
-                `md:rank:${r.start || 'all'}:${r.end || 'all'}:${page + 1}`,
+                `md:rank:${range.start || 'all'}:${range.end || 'all'}:${page + 1}`,
                 '→',
-                2,
-                page === pages - 1,
-              ),
+                ButtonStyle.Secondary,
+                page === pages - 1
+              )
             ),
           ]
         : [],
@@ -1072,270 +1171,281 @@ function rankCard(s, r, page = 0) {
   };
 }
 
-function matchOptions(c, editing = false) {
+function matchOptions(command, editing = false) {
   if (editing) {
-    c.addStringOption(o =>
-      o
+    command.addStringOption(option =>
+      option
         .setName('match_id')
-        .setDescription('ID no canal da equipa ou em /list-matches')
-        .setRequired(true),
+        .setDescription(
+          'ID no canal da equipa ou em /list-matches'
+        )
+        .setRequired(true)
     );
   }
 
-  c
-    .addStringOption(o =>
-      o
+  command
+    .addStringOption(option =>
+      option
         .setName('titre')
         .setDescription('Título livre do MatchDay')
         .setMaxLength(180)
-        .setRequired(!editing),
+        .setRequired(!editing)
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('fermeture')
         .setDescription(
-          'Fim das participações: AAAA-MM-DD HH:mm, fuso horário configurado',
+          'Fim das participações: AAAA-MM-DD HH:mm, fuso horário configurado'
         )
-        .setRequired(!editing),
+        .setRequired(!editing)
     );
 
-  for (const n of [1, 2, 3]) {
-    c
-      .addStringOption(o =>
-        o
-          .setName(`choix${n}_label`)
-          .setDescription(`Opção ${n}: ${BASE[n]} pontos`)
+  for (const number of [1, 2, 3]) {
+    command
+      .addStringOption(option =>
+        option
+          .setName(`choix${number}_label`)
+          .setDescription(
+            `Opção ${number}: ${BASE[number]} pontos`
+          )
           .setMaxLength(180)
-          .setRequired(!editing),
+          .setRequired(!editing)
       )
-      .addStringOption(o =>
-        o
-          .setName(`choix${n}_cote`)
-          .setDescription(`Odd indicativa da opção ${n}`)
+      .addStringOption(option =>
+        option
+          .setName(`choix${number}_cote`)
+          .setDescription(
+            `Odd indicativa da opção ${number}`
+          )
           .setMaxLength(20)
-          .setRequired(!editing),
+          .setRequired(!editing)
       );
   }
 
-  c
-    .addStringOption(o =>
-      o
+  command
+    .addStringOption(option =>
+      option
         .setName('publication')
         .setDescription(
-          'AAAA-MM-DD HH:mm; publicação imediata se não preencheres',
-        ),
+          'AAAA-MM-DD HH:mm; publicação imediata se não preencheres'
+        )
     )
-    .addChannelOption(o =>
-      o
+    .addChannelOption(option =>
+      option
         .setName('channel')
         .setDescription(
-          'Canal de destino; canal atual se não preencheres',
+          'Canal de destino; canal atual se não preencheres'
         )
         .addChannelTypes(
           ChannelType.GuildText,
-          ChannelType.GuildAnnouncement,
-        ),
+          ChannelType.GuildAnnouncement
+        )
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('journee')
         .setDescription(
-          'Jornada AAAA-MM-DD; por defeito, calculada a partir do início do jogo',
-        ),
+          'Jornada AAAA-MM-DD; por defeito, calculada a partir do início do jogo'
+        )
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('texte')
         .setDescription(
-          'Apresentação opcional, até 5 000 caracteres',
+          'Apresentação opcional, até 5 000 caracteres'
         )
-        .setMaxLength(5000),
+        .setMaxLength(5000)
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('image')
         .setDescription('URL da imagem, opcional')
-        .setMaxLength(1000),
+        .setMaxLength(1000)
     )
-    .addRoleOption(o =>
-      o
+    .addRoleOption(option =>
+      option
         .setName('notification')
         .setDescription(
-          'Cargo a mencionar na publicação, opcional',
-        ),
+          'Cargo a mencionar na publicação, opcional'
+        )
     );
 
   if (editing) {
-    c
-      .addBooleanOption(o =>
-        o
+    command
+      .addBooleanOption(option =>
+        option
           .setName('retirer_image')
-          .setDescription('Remover a imagem'),
+          .setDescription('Remover a imagem')
       )
-      .addBooleanOption(o =>
-        o
+      .addBooleanOption(option =>
+        option
           .setName('retirer_notification')
-          .setDescription('Remover a notificação'),
+          .setDescription('Remover a notificação')
       )
-      .addBooleanOption(o =>
-        o
+      .addBooleanOption(option =>
+        option
           .setName('retirer_texte')
-          .setDescription('Repor o texto predefinido'),
+          .setDescription('Repor o texto predefinido')
       );
   }
 
-  return c;
+  return command;
 }
 
-function programOptions(c, editing = false) {
+function programOptions(command, editing = false) {
   if (editing) {
-    c.addStringOption(o =>
-      o
+    command.addStringOption(option =>
+      option
         .setName('programme_id')
         .setDescription('ID do programa no canal da equipa')
-        .setRequired(true),
+        .setRequired(true)
     );
   }
 
-  c
-    .addChannelOption(o =>
-      o
+  command
+    .addChannelOption(option =>
+      option
         .setName('channel')
         .setDescription(
-          'Canal do anúncio; canal atual se não preencheres',
+          'Canal do anúncio; canal atual se não preencheres'
         )
         .addChannelTypes(
           ChannelType.GuildText,
-          ChannelType.GuildAnnouncement,
-        ),
+          ChannelType.GuildAnnouncement
+        )
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('publication')
         .setDescription(
-          'AAAA-MM-DD HH:mm, fuso TIMEZONE; imediato se não preencheres',
-        ),
+          'AAAA-MM-DD HH:mm, fuso TIMEZONE; imediato se não preencheres'
+        )
     )
-    .addChannelOption(o =>
-      o
+    .addChannelOption(option =>
+      option
         .setName('salon_matchs')
         .setDescription(
-          'Canal onde os membros participam nos MatchDays',
+          'Canal onde os membros participam nos MatchDays'
         )
         .addChannelTypes(
           ChannelType.GuildText,
-          ChannelType.GuildAnnouncement,
-        ),
+          ChannelType.GuildAnnouncement
+        )
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('image')
         .setDescription('Ligação da imagem do anúncio')
-        .setMaxLength(1000),
+        .setMaxLength(1000)
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('titre')
         .setDescription(
-          'Título do anúncio; BETCLIC MATCHDAY se não preencheres',
+          'Título do anúncio; BETCLIC MATCHDAY se não preencheres'
         )
-        .setMaxLength(180),
+        .setMaxLength(180)
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('texte')
         .setDescription(
-          'Introdução personalizada, até 5 000 caracteres',
+          'Introdução personalizada, até 5 000 caracteres'
         )
-        .setMaxLength(5000),
+        .setMaxLength(5000)
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('debut')
         .setDescription(
-          'Início AAAA-MM-DD; por defeito, segunda-feira da semana atual',
-        ),
+          'Início AAAA-MM-DD; por defeito, segunda-feira da semana atual'
+        )
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('fin')
         .setDescription(
-          'Fim AAAA-MM-DD; por defeito, domingo da semana atual',
-        ),
+          'Fim AAAA-MM-DD; por defeito, domingo da semana atual'
+        )
     );
 
   for (const key of Object.keys(GROUPS)) {
-    c.addStringOption(o =>
-      o
+    command.addStringOption(option =>
+      option
         .setName(key)
         .setDescription(
-          `Jogos: ${GROUPS[key]}, separados por /; escreve nenhum para remover`,
+          `Jogos: ${GROUPS[key]}, separados por /; escreve nenhum para remover`
         )
-        .setMaxLength(450),
+        .setMaxLength(450)
     );
   }
 
-  c
-    .addRoleOption(o =>
-      o
+  command
+    .addRoleOption(option =>
+      option
         .setName('notification')
         .setDescription(
-          'Cargo a mencionar na publicação, opcional',
-        ),
+          'Cargo a mencionar na publicação, opcional'
+        )
     )
-    .addChannelOption(o =>
-      o
+    .addChannelOption(option =>
+      option
         .setName('reglement')
         .setDescription('Canal do regulamento, opcional')
         .addChannelTypes(
           ChannelType.GuildText,
-          ChannelType.GuildAnnouncement,
-        ),
+          ChannelType.GuildAnnouncement
+        )
     );
 
   if (editing) {
-    c
-      .addBooleanOption(o =>
-        o
+    command
+      .addBooleanOption(option =>
+        option
           .setName('retirer_image')
-          .setDescription('Remover a imagem'),
+          .setDescription('Remover a imagem')
       )
-      .addBooleanOption(o =>
-        o
+      .addBooleanOption(option =>
+        option
           .setName('retirer_notification')
-          .setDescription('Remover a notificação'),
+          .setDescription('Remover a notificação')
       )
-      .addBooleanOption(o =>
-        o
+      .addBooleanOption(option =>
+        option
           .setName('retirer_texte')
-          .setDescription('Repor o texto predefinido'),
+          .setDescription('Repor o texto predefinido')
       );
   }
 
-  return c;
+  return command;
 }
 
-function ranges(c) {
-  return c
-    .addStringOption(o =>
-      o
+function ranges(command) {
+  return command
+    .addStringOption(option =>
+      option
         .setName('type')
         .setDescription('Semana atual por defeito')
         .addChoices(
           { name: 'Semana', value: 'week' },
-          { name: 'Jornada desportiva', value: 'today' },
-          { name: 'Geral', value: 'general' },
-        ),
+          {
+            name: 'Jornada desportiva',
+            value: 'today',
+          },
+          { name: 'Geral', value: 'general' }
+        )
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('debut')
-        .setDescription('Início personalizado: AAAA-MM-DD'),
+        .setDescription(
+          'Início personalizado: AAAA-MM-DD'
+        )
     )
-    .addStringOption(o =>
-      o
+    .addStringOption(option =>
+      option
         .setName('fin')
-        .setDescription('Fim personalizado: AAAA-MM-DD'),
+        .setDescription('Fim personalizado: AAAA-MM-DD')
     );
 }
 
@@ -1345,184 +1455,182 @@ const adminCommand = (name, description) =>
     .setDescription(description)
     .setDefaultMemberPermissions(P.Administrator);
 
-const idOption = (c, name = 'match_id') =>
-  c.addStringOption(o =>
-    o
+const idOption = (command, name = 'match_id') =>
+  command.addStringOption(option =>
+    option
       .setName(name)
       .setDescription('ID na ficha da equipa')
-      .setRequired(true),
+      .setRequired(true)
   );
 
 const commands = [
   matchOptions(
     adminCommand(
       'create-match',
-      'Criar um MatchDay imediato ou agendado',
-    ),
+      'Criar um MatchDay imediato ou agendado'
+    )
   ),
-
   matchOptions(
     adminCommand('edit-match', 'Editar um MatchDay'),
-    true,
+    true
   ),
-
   idOption(
     adminCommand(
       'close-match',
-      'Encerrar imediatamente as participações',
-    ),
+      'Encerrar imediatamente as participações'
+    )
   ),
-
   idOption(
     adminCommand(
       'delete-match',
-      'Eliminar um MatchDay com confirmação',
-    ),
+      'Eliminar um MatchDay com confirmação'
+    )
   ),
-
   idOption(
     adminCommand(
       'set-result',
-      'Registar ou corrigir as opções vencedoras',
-    ),
+      'Registar ou corrigir as opções vencedoras'
+    )
   )
-    .addBooleanOption(o =>
-      o
+    .addBooleanOption(option =>
+      option
         .setName('choix1')
-        .setDescription('A opção 1 é vencedora'),
+        .setDescription('A opção 1 é vencedora')
     )
-    .addBooleanOption(o =>
-      o
+    .addBooleanOption(option =>
+      option
         .setName('choix2')
-        .setDescription('A opção 2 é vencedora'),
+        .setDescription('A opção 2 é vencedora')
     )
-    .addBooleanOption(o =>
-      o
+    .addBooleanOption(option =>
+      option
         .setName('choix3')
-        .setDescription('A opção 3 é vencedora'),
+        .setDescription('A opção 3 é vencedora')
     )
-    .addBooleanOption(o =>
-      o
+    .addBooleanOption(option =>
+      option
         .setName('annule')
-        .setDescription('Anular o jogo: sem pontos'),
+        .setDescription('Anular o jogo: sem pontos')
     ),
-
   programOptions(
     adminCommand(
       'schedule-week',
-      'Criar o anúncio do programa da semana',
-    ),
+      'Criar o anúncio do programa da semana'
+    )
   ),
-
   programOptions(
     adminCommand(
       'edit-week',
-      'Editar o anúncio da semana',
+      'Editar o anúncio da semana'
     ),
-    true,
+    true
   ),
-
   idOption(
     adminCommand(
       'delete-week',
-      'Eliminar um programa com confirmação',
+      'Eliminar um programa com confirmação'
     ),
-    'programme_id',
+    'programme_id'
   ),
-
   ranges(
     new SlashCommandBuilder()
       .setName('classement')
-      .setDescription('Mostrar a classificação a pedido'),
-  ).addBooleanOption(o =>
-    o
+      .setDescription(
+        'Mostrar a classificação a pedido'
+      )
+  ).addBooleanOption(option =>
+    option
       .setName('prive')
-      .setDescription('Mostrar apenas para ti'),
+      .setDescription('Mostrar apenas para ti')
   ),
-
   adminCommand(
     'list-matches',
-    'Listar os MatchDays e os programas',
-  ).addStringOption(o =>
-    o
+    'Listar os MatchDays e os programas'
+  ).addStringOption(option =>
+    option
       .setName('semaine')
       .setDescription(
-        'Filtrar por uma data AAAA-MM-DD da semana',
-      ),
+        'Filtrar por uma data AAAA-MM-DD da semana'
+      )
   ),
-
   ranges(
     adminCommand(
       'export',
-      'Exportar os palpites e a classificação em CSV',
-    ),
+      'Exportar os palpites e a classificação em CSV'
+    )
   ),
-
   adminCommand(
     'reset-scores',
-    'Arquivar e repor todos os jogos e pontos a zero, com confirmação',
+    'Arquivar e repor todos os jogos e pontos a zero, com confirmação'
   ),
-
   adminCommand(
     'diagnostic',
-    'Verificar os dados guardados e os agendamentos',
+    'Verificar os dados guardados e os agendamentos'
   ),
 ];
 
-async function cacheImage(x, dir) {
-  x.imageFile = '';
+async function cacheImage(item, dir) {
+  item.imageFile = '';
 
-  if (!x.imageUrl) return;
+  if (!item.imageUrl) return;
 
-  const u = new URL(x.imageUrl);
+  const url = new URL(item.imageUrl);
 
   if (
-    !['cdn.discordapp.com', 'media.discordapp.net']
-      .includes(u.hostname)
+    ![
+      'cdn.discordapp.com',
+      'media.discordapp.net',
+    ].includes(url.hostname)
   ) {
     return;
   }
 
-  const r = await fetch(u, {
+  const response = await fetch(url, {
     redirect: 'error',
     signal: AbortSignal.timeout(15000),
   });
 
   need(
-    r.ok,
-    'Ligação Discord expirada ou inacessível. Copia novamente a ligação da imagem.',
+    response.ok,
+    'Ligação Discord expirada ou inacessível. Copia novamente a ligação da imagem.'
   );
 
-  const ext = {
+  const extension = {
     'image/png': '.png',
     'image/jpeg': '.jpg',
     'image/webp': '.webp',
     'image/gif': '.gif',
-  }[r.headers.get('content-type')?.split(';')[0]];
+  }[
+    response.headers
+      .get('content-type')
+      ?.split(';')[0]
+  ];
 
   need(
-    ext,
-    'Formatos de imagem: PNG, JPG, WEBP ou GIF.',
+    extension,
+    'Formatos de imagem: PNG, JPG, WEBP ou GIF.'
   );
 
   need(
-    Number(r.headers.get('content-length') || 0) <=
+    Number(
+      response.headers.get('content-length') || 0
+    ) <=
       8 * 1024 * 1024,
-    'Imagem demasiado grande: máximo de 8 MB.',
+    'Imagem demasiado grande: máximo de 8 MB.'
   );
 
   const chunks = [];
   let size = 0;
 
-  for await (const c of r.body) {
-    size += c.length;
+  for await (const chunk of response.body) {
+    size += chunk.length;
 
     need(
       size <= 8 * 1024 * 1024,
-      'Imagem demasiado grande: máximo de 8 MB.',
+      'Imagem demasiado grande: máximo de 8 MB.'
     );
 
-    chunks.push(c);
+    chunks.push(chunk);
   }
 
   const buffer = Buffer.concat(chunks);
@@ -1530,34 +1638,33 @@ async function cacheImage(x, dir) {
 
   await fs.mkdir(folder, { recursive: true });
 
-  x.imageFile = path.join(
+  item.imageFile = path.join(
     folder,
-    `${x.id}-${createHash('sha256')
+    `${item.id}-${createHash('sha256')
       .update(buffer)
       .digest('hex')
-      .slice(0, 12)}${ext}`,
+      .slice(0, 12)}${extension}`
   );
 
-  await fs.writeFile(x.imageFile, buffer, {
+  await fs.writeFile(item.imageFile, buffer, {
     mode: 0o600,
   });
 }
 
 async function run() {
   const env = process.env;
-
   const guildId = env.DISCORD_GUILD_ID?.trim();
   const staffId = env.DISCORD_ADMIN_CHANNEL_ID?.trim();
 
   need(
     env.DISCORD_TOKEN &&
       /^\d{17,20}$/.test(guildId || ''),
-    'Preenche DISCORD_TOKEN e DISCORD_GUILD_ID.',
+    'Preenche DISCORD_TOKEN e DISCORD_GUILD_ID.'
   );
 
   need(
     !staffId || /^\d{17,20}$/.test(staffId),
-    'DISCORD_ADMIN_CHANNEL_ID inválido.',
+    'DISCORD_ADMIN_CHANNEL_ID inválido.'
   );
 
   parts(Date.now());
@@ -1572,7 +1679,7 @@ async function run() {
       env.RAILWAY_VOLUME_MOUNT_PATH &&
         path.resolve(dir) ===
           path.resolve(env.RAILWAY_VOLUME_MOUNT_PATH),
-      'Liga o volume e configura DATA_DIR com o mesmo caminho.',
+      'Liga o volume e configura DATA_DIR com o mesmo caminho.'
     );
   }
 
@@ -1587,65 +1694,76 @@ async function run() {
   let stopping = false;
   let timer;
 
-  const admin = i =>
+  const admin = interaction =>
     need(
-      i.memberPermissions?.has(P.Administrator),
-      'Este comando está reservado aos administradores.',
+      interaction.memberPermissions?.has(
+        P.Administrator
+      ),
+      'Este comando está reservado aos administradores.'
     );
 
-  const log = (label, e) => {
+  const log = (label, error) => {
     const message = String(
-      e?.message || 'Erro sem detalhes',
-    ).replaceAll(env.DISCORD_TOKEN, '[TOKEN OCULTO]');
+      error?.message || 'Erro sem detalhes'
+    ).replaceAll(
+      env.DISCORD_TOKEN,
+      '[TOKEN OCULTO]'
+    );
 
     console.error(
-      `${label}: ${e?.code || e?.name || 'Erro'} | ${message.slice(0, 1500)}`,
+      `${label}: ${
+        error?.code || error?.name || 'Erro'
+      } | ${message.slice(0, 1500)}`
     );
   };
 
   async function channel(id) {
-    const c = await client.channels.fetch(id);
+    const result = await client.channels.fetch(id);
 
     need(
-      c &&
-        c.guildId === guildId &&
+      result &&
+        result.guildId === guildId &&
         [
           ChannelType.GuildText,
           ChannelType.GuildAnnouncement,
-        ].includes(c.type),
-      'Canal inacessível ou pertencente a outro servidor.',
+        ].includes(result.type),
+      'Canal inacessível ou pertencente a outro servidor.'
     );
 
     need(
-      c.permissionsFor(client.user)?.has([
+      result.permissionsFor(client.user)?.has([
         P.ViewChannel,
         P.SendMessages,
         P.EmbedLinks,
         P.AttachFiles,
         P.ReadMessageHistory,
       ]),
-      'O bot precisa de permissões para ver o canal, enviar mensagens, incorporar ligações, anexar ficheiros e ler o histórico.',
+      'O bot precisa de permissões para ver o canal, enviar mensagens, incorporar ligações, anexar ficheiros e ler o histórico.'
     );
 
-    return c;
+    return result;
   }
 
-  async function fetchMessage(c, id) {
+  async function fetchMessage(targetChannel, id) {
     try {
-      return await c.messages.fetch(id);
-    } catch (e) {
-      if (e.code !== 10008) throw e;
+      return await targetChannel.messages.fetch(id);
+    } catch (error) {
+      if (error.code !== 10008) throw error;
       return null;
     }
   }
 
-  async function findMessage(c, marker, since) {
+  async function findMessage(
+    targetChannel,
+    marker,
+    since
+  ) {
     if (!since) return null;
 
     let before;
 
-    for (let n = 0; n < 100; n++) {
-      const list = await c.messages.fetch({
+    for (let page = 0; page < 100; page++) {
+      const list = await targetChannel.messages.fetch({
         limit: 100,
         ...(before ? { before } : {}),
       });
@@ -1653,11 +1771,11 @@ async function run() {
       if (!list.size) return null;
 
       const found = list.find(
-        m =>
-          m.author.id === client.user.id &&
-          m.embeds.some(e =>
-            e.footer?.text?.startsWith(marker),
-          ),
+        message =>
+          message.author.id === client.user.id &&
+          message.embeds.some(card =>
+            card.footer?.text?.startsWith(marker)
+          )
       );
 
       if (found) return found;
@@ -1672,73 +1790,77 @@ async function run() {
     }
 
     throw new Error(
-      'Histórico demasiado longo para verificar um envio interrompido.',
+      'Histórico demasiado longo para verificar um envio interrompido.'
     );
   }
 
-  async function syncStaff(x, kind) {
-    if (!staffId || x.status === 'deleted') return;
+  async function syncStaff(item, kind) {
+    if (!staffId || item.status === 'deleted') return;
 
     if (
       kind === 'matches' &&
-      !x.staffMessageId &&
-      (
-        x.status === 'closed' ||
-        closeAt(x) <= Date.now()
-      )
+      !item.staffMessageId &&
+      (item.status === 'closed' ||
+        closeAt(item) <= Date.now())
     ) {
       return;
     }
 
-    const payload = staffCard(x, kind);
-
+    const payload = staffCard(item, kind);
     const hash = digest(
-      payload.embeds.map(e => e.toJSON()),
+      payload.embeds.map(card => card.toJSON())
     );
 
     if (
-      x.staffHash === hash &&
-      x.staffChannelId === staffId
+      item.staffHash === hash &&
+      item.staffChannelId === staffId
     ) {
       return;
     }
 
-    const c = await channel(staffId);
+    const targetChannel = await channel(staffId);
 
     let previous =
-      x.staffChannelId === staffId && x.staffMessageId
-        ? await fetchMessage(c, x.staffMessageId)
+      item.staffChannelId === staffId &&
+      item.staffMessageId
+        ? await fetchMessage(
+            targetChannel,
+            item.staffMessageId
+          )
         : null;
 
-    if (!previous && x.staffMessageId) return;
+    if (!previous && item.staffMessageId) return;
 
-    if (!previous && x.staffSendingAt) {
+    if (!previous && item.staffSendingAt) {
       previous = await findMessage(
-        c,
-        `Betclic MatchDay | Staff ${kind} ${x.id}`,
-        x.staffSendingAt,
+        targetChannel,
+        `Betclic MatchDay | Staff ${kind} ${item.id}`,
+        item.staffSendingAt
       );
     }
 
-    if (!previous && !x.staffSendingAt) {
-      await store.change(s => {
-        s[kind][x.id].staffSendingAt = Date.now();
+    if (!previous && !item.staffSendingAt) {
+      await store.change(state => {
+        state[kind][item.id].staffSendingAt =
+          Date.now();
       });
     }
 
     const message = previous
       ? await previous.edit(payload)
-      : await c.send({
+      : await targetChannel.send({
           ...payload,
           nonce: BigInt(
             '0x' +
-              digest(`staff:${kind}:${x.id}`).slice(0, 16),
+              digest(
+                `staff:${kind}:${item.id}`
+              ).slice(0, 16)
           ).toString(),
           enforceNonce: true,
         });
 
-    await store.change(s => {
-      Object.assign(s[kind][x.id], {
+    await store.change(state => {
+      Object.assign(state[kind][item.id], {
         staffMessageId: message.id,
         staffChannelId: staffId,
         staffHash: hash,
@@ -1746,46 +1868,54 @@ async function run() {
     });
   }
 
-  async function publish(x, kind, s) {
+  async function publish(item, kind, state) {
     const isWeek = kind === 'programs';
 
-    if (x.status === 'deleted') {
-      if (x.messageId) {
-        const c = await channel(
-          x.postChannelId || x.channelId,
+    if (item.status === 'deleted') {
+      if (item.messageId) {
+        const targetChannel = await channel(
+          item.postChannelId || item.channelId
         );
 
-        const msg = await fetchMessage(c, x.messageId);
+        const message = await fetchMessage(
+          targetChannel,
+          item.messageId
+        );
 
-        if (msg) await msg.delete();
+        if (message) await message.delete();
 
-        await store.change(db => {
-          db[kind][x.id].messageId = null;
+        await store.change(database => {
+          database[kind][item.id].messageId = null;
         });
       }
 
       return;
     }
 
-    if (!x.published && x.publishAt > Date.now()) {
+    if (
+      !item.published &&
+      item.publishAt > Date.now()
+    ) {
       return;
     }
 
     if (
       !isWeek &&
-      !x.published &&
-      closeAt(x) <= Date.now()
+      !item.published &&
+      closeAt(item) <= Date.now()
     ) {
-      if (!x.missed) {
-        await store.change(db => {
-          db.matches[x.id].missed = true;
-          db.matches[x.id].status = 'closed';
-          db.matches[x.id].version++;
+      if (!item.missed) {
+        await store.change(database => {
+          database.matches[item.id].missed = true;
+          database.matches[item.id].status = 'closed';
+          database.matches[item.id].version++;
         });
 
         log(
-          `Publicação falhada ${x.id}`,
-          new Error('O jogo já começou. Não foi publicado.'),
+          `Publicação falhada ${item.id}`,
+          new Error(
+            'O jogo já começou. Não foi publicado.'
+          )
         );
       }
 
@@ -1793,64 +1923,76 @@ async function run() {
     }
 
     const payload = isWeek
-      ? weekCard(s, x)
+      ? weekCard(state, item)
       : matchCard({
-          ...x,
+          ...item,
           status:
-            x.status === 'scheduled'
+            item.status === 'scheduled'
               ? 'open'
-              : x.status,
+              : item.status,
         });
 
     const hash = digest({
       content: payload.content || '',
-      embeds: payload.embeds.map(e => e.toJSON()),
-      components: payload.components.map(r => r.toJSON()),
-      image: x.imageUrl,
-      file: x.imageFile,
+      embeds: payload.embeds.map(card => card.toJSON()),
+      components: payload.components.map(component =>
+        component.toJSON()
+      ),
+      image: item.imageUrl,
+      file: item.imageFile,
     });
 
     if (
-      x.published &&
-      x.publicHash === hash &&
-      !x.dirty
+      item.published &&
+      item.publicHash === hash &&
+      !item.dirty
     ) {
       return;
     }
 
     const moving = Boolean(
-      x.messageId &&
-        x.postChannelId &&
-        x.postChannelId !== x.channelId,
+      item.messageId &&
+        item.postChannelId &&
+        item.postChannelId !== item.channelId
     );
 
     if (moving) {
-      const oldC = await channel(x.postChannelId);
-      const old = await fetchMessage(oldC, x.messageId);
+      const oldChannel = await channel(
+        item.postChannelId
+      );
 
-      if (old) await old.delete();
+      const oldMessage = await fetchMessage(
+        oldChannel,
+        item.messageId
+      );
 
-      await store.change(db => {
-        const e = db[kind][x.id];
-        e.messageId = null;
-        e.sendingAt = null;
+      if (oldMessage) await oldMessage.delete();
+
+      await store.change(database => {
+        const saved = database[kind][item.id];
+        saved.messageId = null;
+        saved.sendingAt = null;
       });
 
-      x.messageId = null;
-      x.sendingAt = null;
+      item.messageId = null;
+      item.sendingAt = null;
     }
 
-    const c = await channel(x.channelId);
+    const targetChannel = await channel(item.channelId);
 
-    let previous = x.messageId
-      ? await fetchMessage(c, x.messageId)
+    let previous = item.messageId
+      ? await fetchMessage(
+          targetChannel,
+          item.messageId
+        )
       : null;
 
-    if (x.published && !previous && !moving) {
-      await store.change(db => {
-        const latest = db[kind][x.id];
+    // Un message déjà publié puis supprimé n'est pas recréé.
+    if (item.published && !previous && !moving) {
+      await store.change(database => {
+        const latest = database[kind][item.id];
 
-        if (latest.version === x.version) {
+        if (latest.version === item.version) {
           latest.publicHash = hash;
           latest.dirty = false;
         }
@@ -1859,25 +2001,30 @@ async function run() {
       return;
     }
 
-    if (!previous && !x.messageId && x.sendingAt) {
+    if (
+      !previous &&
+      !item.messageId &&
+      item.sendingAt
+    ) {
       previous = await findMessage(
-        c,
+        targetChannel,
         isWeek
-          ? `Betclic MatchDay | Programme ${x.id} |`
-          : `Betclic MatchDay | Match ${x.id}`,
-        x.sendingAt,
+          ? `Betclic MatchDay | Programme ${item.id} |`
+          : `Betclic MatchDay | Match ${item.id}`,
+        item.sendingAt
       );
     }
 
-    if (!previous && !x.sendingAt) {
-      x.sendingAt = Date.now();
+    if (!previous && !item.sendingAt) {
+      item.sendingAt = Date.now();
 
-      await store.change(db => {
-        db[kind][x.id].sendingAt = x.sendingAt;
+      await store.change(database => {
+        database[kind][item.id].sendingAt =
+          item.sendingAt;
       });
     }
 
-    const notify = !x.published && x.roleId;
+    const notify = !item.published && item.roleId;
 
     const message = previous
       ? await previous.edit({
@@ -1886,37 +2033,40 @@ async function run() {
           content: payload.content || '',
           allowedMentions: quiet,
         })
-      : await c.send({
+      : await targetChannel.send({
           ...payload,
           content: [
-            notify ? `<@&${x.roleId}>` : '',
+            notify ? `<@&${item.roleId}>` : '',
             payload.content || '',
           ]
             .filter(Boolean)
             .join('\n\n'),
           allowedMentions: notify
-            ? { parse: [], roles: [x.roleId] }
+            ? {
+                parse: [],
+                roles: [item.roleId],
+              }
             : quiet,
           nonce: BigInt(
             '0x' +
               digest(
-                `${kind}:${x.id}:${x.sendingAt}`,
-              ).slice(0, 16),
+                `${kind}:${item.id}:${item.sendingAt}`
+              ).slice(0, 16)
           ).toString(),
           enforceNonce: true,
         });
 
-    const remove = await store.change(db => {
-      const latest = db[kind][x.id];
+    const remove = await store.change(database => {
+      const latest = database[kind][item.id];
 
       latest.messageId = message.id;
-      latest.postChannelId = x.channelId;
+      latest.postChannelId = item.channelId;
 
       if (latest.status === 'deleted') return true;
 
       latest.published = true;
 
-      if (latest.version === x.version) {
+      if (latest.version === item.version) {
         latest.publicHash = hash;
         latest.dirty = false;
 
@@ -1931,14 +2081,18 @@ async function run() {
     if (remove) {
       await message.delete();
 
-      await store.change(db => {
-        db[kind][x.id].messageId = null;
+      await store.change(database => {
+        database[kind][item.id].messageId = null;
       });
     }
   }
 
   async function tick() {
-    if (ticking || stopping || !client.isReady()) {
+    if (
+      ticking ||
+      stopping ||
+      !client.isReady()
+    ) {
       return;
     }
 
@@ -1949,100 +2103,106 @@ async function run() {
 
       if (
         Object.values(current.matches).some(
-          m =>
-            m.status === 'open' &&
-            closeAt(m) <= Date.now(),
+          match =>
+            match.status === 'open' &&
+            closeAt(match) <= Date.now()
         )
       ) {
-        await store.change(s => {
-          for (const m of Object.values(s.matches)) {
+        await store.change(state => {
+          for (const match of Object.values(
+            state.matches
+          )) {
             if (
-              m.status === 'open' &&
-              closeAt(m) <= Date.now()
+              match.status === 'open' &&
+              closeAt(match) <= Date.now()
             ) {
-              m.status = 'closed';
-              m.dirty = true;
-              m.version++;
+              match.status = 'closed';
+              match.dirty = true;
+              match.version++;
             }
           }
         });
       }
 
-      const s = await store.read();
+      const state = await store.read();
 
       for (const kind of ['programs', 'matches']) {
-        const sorted = Object.values(s[kind])
-          .sort((a, b) => a.publishAt - b.publishAt);
-
-        for (const x of sorted) {
+        for (const item of Object.values(
+          state[kind]
+        ).sort((a, b) => a.publishAt - b.publishAt)) {
           try {
-            await syncStaff(x, kind);
-          } catch (e) {
-            log(`Ficha da equipa ${x.id}`, e);
+            await syncStaff(item, kind);
+          } catch (error) {
+            log(`Ficha da equipa ${item.id}`, error);
           }
 
           try {
-            await publish(x, kind, s);
-          } catch (e) {
-            log(`Publication ${x.id}`, e);
+            await publish(item, kind, state);
+          } catch (error) {
+            log(`Publicação ${item.id}`, error);
           }
         }
       }
-    } catch (e) {
-      log('Programmation', e);
+    } catch (error) {
+      log('Agendamento', error);
     } finally {
       ticking = false;
     }
   }
 
-  async function ask(i, data) {
+  async function ask(interaction, data) {
     const token = uid();
 
-    await store.change(s => {
-      s.pending[token] = {
+    await store.change(state => {
+      state.pending[token] = {
         ...data,
-        uid: i.user.id,
+        uid: interaction.user.id,
         expires: Date.now() + 900000,
       };
     });
 
-    const content =
+    const text =
       data.kind === 'reset'
         ? '⚠️ Arquivar todos os jogos, programas, pontos e boosts e recomeçar do zero?'
         : data.table === 'programs'
           ? '⚠️ Eliminar este anúncio? Os jogos e os palpites serão mantidos.'
           : '⚠️ Eliminar este MatchDay? Os seus pontos serão removidos das classificações. Será arquivada uma cópia.';
 
-    return i.editReply({
-      content,
+    return interaction.editReply({
+      content: text,
       embeds: [],
       components: [
         row(
           button(
             `md:yes:${token}`,
             'Confirmar',
-            ButtonStyle.Danger,
+            ButtonStyle.Danger
           ),
-          button(`md:no:${token}`, 'Cancelar'),
+          button(
+            `md:no:${token}`,
+            'Cancelar'
+          )
         ),
       ],
     });
   }
 
-  async function slash(i) {
+  async function slash(interaction) {
     need(
-      i.guildId === guildId,
-      'Utiliza este comando no servidor configurado.',
+      interaction.guildId === guildId,
+      'Utiliza este comando no servidor configurado.'
     );
 
-    const name = i.commandName;
+    const name = interaction.commandName;
 
-    if (name !== 'classement') admin(i);
+    if (name !== 'classement') {
+      admin(interaction);
+    }
 
-    await i.deferReply({
+    await interaction.deferReply({
       flags:
         name === 'classement' &&
-        !i.options.getBoolean('prive')
+        !interaction.options.getBoolean('prive')
           ? undefined
           : MessageFlags.Ephemeral,
     });
@@ -2051,15 +2211,18 @@ async function run() {
       name === 'create-match' ||
       name === 'edit-match'
     ) {
-      const o = i.options;
+      const options = interaction.options;
       const editing = name === 'edit-match';
       const state = await store.read();
 
       const old = editing
-        ? getMatch(state, o.getString('match_id'))
+        ? getMatch(
+            state,
+            options.getString('match_id')
+          )
         : null;
 
-      const m = old
+      const match = old
         ? copy(old)
         : {
             id: 'match_' + uid(),
@@ -2077,157 +2240,186 @@ async function run() {
             messageId: null,
           };
 
-      if (o.getString('titre') !== null) {
-        m.title = clean(
-          o.getString('titre'),
+      if (options.getString('titre') !== null) {
+        match.title = clean(
+          options.getString('titre'),
           180,
-          'Título',
+          'Título'
         );
       }
 
-      if (o.getString('fermeture')) {
-        m.closingTimeUTC = new Date(
-          parseTime(o.getString('fermeture')),
+      if (options.getString('fermeture')) {
+        match.closingTimeUTC = new Date(
+          parseTime(
+            options.getString('fermeture')
+          )
         ).toISOString();
       }
 
-      for (const n of [1, 2, 3]) {
-        if (o.getString(`choix${n}_label`) !== null) {
-          m[`choice${n}Label`] = clean(
-            o.getString(`choix${n}_label`),
+      for (const number of [1, 2, 3]) {
+        if (
+          options.getString(
+            `choix${number}_label`
+          ) !== null
+        ) {
+          match[`choice${number}Label`] = clean(
+            options.getString(
+              `choix${number}_label`
+            ),
             180,
-            'Opção',
+            'Opção'
           );
         }
 
-        if (o.getString(`choix${n}_cote`) !== null) {
-          m[`choice${n}Odds`] = odds(
-            o.getString(`choix${n}_cote`),
+        if (
+          options.getString(
+            `choix${number}_cote`
+          ) !== null
+        ) {
+          match[`choice${number}Odds`] = odds(
+            options.getString(
+              `choix${number}_cote`
+            )
           );
         }
       }
 
-      if (o.getString('publication')) {
+      if (options.getString('publication')) {
         need(
           !old?.published,
-          'O jogo já foi publicado: o horário de publicação não pode ser alterado.',
+          'O jogo já foi publicado: o horário de publicação não pode ser alterado.'
         );
 
-        m.publishAt = parseTime(
-          o.getString('publication'),
+        match.publishAt = parseTime(
+          options.getString('publication')
         );
       }
 
-      if (o.getChannel('channel')) {
-        m.channelId = o.getChannel('channel').id;
+      if (options.getChannel('channel')) {
+        match.channelId =
+          options.getChannel('channel').id;
       }
 
-      m.channelId ||= i.channelId;
+      match.channelId ||= interaction.channelId;
 
-      m.date = o.getString('journee')
-        ? dateKey(o.getString('journee'))
-        : old?.date || sportDay(closeAt(m));
+      match.date = options.getString('journee')
+        ? dateKey(options.getString('journee'))
+        : old?.date || sportDay(closeAt(match));
 
-      if (o.getString('texte') !== null) {
-        m.description = o.getString('texte');
+      if (options.getString('texte') !== null) {
+        match.description = options.getString('texte');
       }
 
-      if (o.getString('image') !== null) {
-        m.imageUrl = imageURL(o.getString('image'));
+      if (options.getString('image') !== null) {
+        match.imageUrl = imageURL(
+          options.getString('image')
+        );
       }
 
-      if (o.getRole('notification')) {
-        m.roleId = o.getRole('notification').id;
-      }
-
-      if (editing && o.getBoolean('retirer_image')) {
-        m.imageUrl = '';
-        m.imageFile = '';
+      if (options.getRole('notification')) {
+        match.roleId =
+          options.getRole('notification').id;
       }
 
       if (
         editing &&
-        o.getBoolean('retirer_notification')
+        options.getBoolean('retirer_image')
       ) {
-        m.roleId = null;
+        match.imageUrl = '';
+        match.imageFile = '';
       }
 
-      if (editing && o.getBoolean('retirer_texte')) {
-        m.description = '';
+      if (
+        editing &&
+        options.getBoolean('retirer_notification')
+      ) {
+        match.roleId = null;
+      }
+
+      if (
+        editing &&
+        options.getBoolean('retirer_texte')
+      ) {
+        match.description = '';
       }
 
       need(
-        m.publishAt < closeAt(m),
-        'A publicação deve ser anterior ao fecho das participações.',
+        match.publishAt < closeAt(match),
+        'A publicação deve ser anterior ao fecho das participações.'
       );
 
       if (!old?.published) {
         need(
-          closeAt(m) > Date.now() &&
-            (
-              !o.getString('publication') ||
-              m.publishAt > Date.now()
-            ),
-          'Escolhe datas futuras.',
+          closeAt(match) > Date.now() &&
+            (!options.getString('publication') ||
+              match.publishAt > Date.now()),
+          'Escolhe datas futuras.'
         );
       }
 
       if (
         old &&
-        (
-          old.status === 'closed' ||
-          closeAt(old) <= Date.now()
-        )
+        (old.status === 'closed' ||
+          closeAt(old) <= Date.now())
       ) {
         need(
-          closeAt(m) <= closeAt(old),
-          'Um jogo encerrado não pode ser reaberto.',
+          closeAt(match) <= closeAt(old),
+          'Um jogo encerrado não pode ser reaberto.'
         );
 
-        m.status = 'closed';
+        match.status = 'closed';
       }
 
       const changedChoices =
         old &&
         [1, 2, 3].some(
-          n =>
-            m[`choice${n}Label`] !==
-              old[`choice${n}Label`] ||
-            m[`choice${n}Odds`] !==
-              old[`choice${n}Odds`],
+          number =>
+            match[`choice${number}Label`] !==
+              old[`choice${number}Label`] ||
+            match[`choice${number}Odds`] !==
+              old[`choice${number}Odds`]
         );
 
       const sensitive =
         changedChoices ||
-        (old && m.date !== old.date);
+        (old && match.date !== old.date);
 
-      matchCard(m);
-      await channel(m.channelId);
+      matchCard(match);
 
-      if (!old || m.imageUrl !== old.imageUrl) {
-        await cacheImage(m, store.dir);
+      await channel(match.channelId);
+
+      if (
+        !old ||
+        match.imageUrl !== old.imageUrl
+      ) {
+        await cacheImage(match, store.dir);
       }
 
-      await store.change(s => {
+      await store.change(state => {
         if (old) {
-          const latest = getMatch(s, m.id);
+          const latest = getMatch(
+            state,
+            match.id
+          );
 
           need(
             latest.version === old.version,
-            'O jogo foi alterado. Tenta novamente.',
+            'O jogo foi alterado. Tenta novamente.'
           );
 
           need(
             !sensitive ||
-              !Object.keys(s.bets[m.id] || {}).length,
-            'Já existem palpites: não podes alterar as opções, as odds ou a jornada.',
+              !Object.keys(
+                state.bets[match.id] || {}
+              ).length,
+            'Já existem palpites: não podes alterar as opções, as odds ou a jornada.'
           );
 
-          Object.assign(m, {
+          Object.assign(match, {
             published: latest.published,
             status:
               latest.status === 'scheduled' &&
-              m.status === 'closed'
+              match.status === 'closed'
                 ? 'closed'
                 : latest.status,
             messageId: latest.messageId,
@@ -2238,19 +2430,29 @@ async function run() {
             staffSendingAt: latest.staffSendingAt,
           });
 
-          if (sensitive) m.revision++;
+          if (sensitive) match.revision++;
         }
 
-        m.version++;
-        m.dirty = true;
-        s.matches[m.id] = m;
-        s.bets[m.id] ||= {};
+        match.version++;
+        match.dirty = true;
+
+        state.matches[match.id] = match;
+        state.bets[match.id] ||= {};
       });
 
       void tick();
 
-      return i.editReply(
-        `✅ MatchDay ${editing ? 'atualizado' : 'criado'}.\nID : \`${m.id}\`\nPublicação: ${time(m.publishAt)}\nFim das participações: ${time(closeAt(m))}\nJornada desportiva: ${m.date}\nCanal: <#${m.channelId}>`,
+      return interaction.editReply(
+        `✅ MatchDay ${
+          editing ? 'atualizado' : 'criado'
+        }.\n` +
+          `ID: \`${match.id}\`\n` +
+          `Publicação: ${time(match.publishAt)}\n` +
+          `Fim das participações: ${time(
+            closeAt(match)
+          )}\n` +
+          `Jornada desportiva: ${match.date}\n` +
+          `Canal: <#${match.channelId}>`
       );
     }
 
@@ -2258,21 +2460,23 @@ async function run() {
       name === 'schedule-week' ||
       name === 'edit-week'
     ) {
-      const o = i.options;
+      const options = interaction.options;
       const editing = name === 'edit-week';
-      const s = await store.read();
+      const state = await store.read();
 
       const old = editing
-        ? s.programs[o.getString('programme_id')]
+        ? state.programs[
+            options.getString('programme_id')
+          ]
         : null;
 
       need(
         !editing ||
           (old && old.status !== 'deleted'),
-        'Programa não encontrado.',
+        'Programa não encontrado.'
       );
 
-      const p = old
+      const program = old
         ? copy(old)
         : {
             id: 'week_' + uid(),
@@ -2292,132 +2496,159 @@ async function run() {
             messageId: null,
           };
 
-      if (o.getString('titre') !== null) {
-        p.title = clean(
-          o.getString('titre'),
+      if (options.getString('titre') !== null) {
+        program.title = clean(
+          options.getString('titre'),
           180,
-          'Título',
+          'Título'
         );
       }
 
-      if (o.getString('debut')) {
-        p.start = dateKey(o.getString('debut'));
+      if (options.getString('debut')) {
+        program.start = dateKey(
+          options.getString('debut')
+        );
       }
 
-      if (o.getString('fin')) {
-        p.end = dateKey(o.getString('fin'));
+      if (options.getString('fin')) {
+        program.end = dateKey(
+          options.getString('fin')
+        );
       }
 
       need(
-        Date.parse(p.end + 'T12:00:00Z') -
-          Date.parse(p.start + 'T12:00:00Z') <=
+        Date.parse(
+          program.end + 'T12:00:00Z'
+        ) -
+          Date.parse(
+            program.start + 'T12:00:00Z'
+          ) <=
           6 * 86400000,
-        'O programa não pode ultrapassar sete dias.',
+        'O programa não pode ultrapassar sete dias.'
       );
 
       for (const key of Object.keys(GROUPS)) {
-        if (o.getString(key) !== null) {
-          const text = o
+        if (options.getString(key) !== null) {
+          const text = options
             .getString(key)
             .trim()
             .replace(/[\u2013\u2014]/g, '-');
 
-          p.blocks[key] =
+          program.blocks[key] =
             /^(?:aucun|nenhum)$/i.test(text)
               ? ''
               : text;
         }
       }
 
-      if (o.getChannel('reglement')) {
-        p.rulesChannelId = o.getChannel('reglement').id;
+      if (options.getChannel('reglement')) {
+        program.rulesChannelId =
+          options.getChannel('reglement').id;
       }
 
-      validateProgram(p);
+      validateProgram(program);
 
-      if (o.getString('publication')) {
+      if (options.getString('publication')) {
         need(
           !old?.published,
-          'O anúncio já foi publicado: edita o conteúdo diretamente com este comando.',
+          'O anúncio já foi publicado: edita o conteúdo diretamente com este comando.'
         );
 
-        p.publishAt = parseTime(
-          o.getString('publication'),
+        program.publishAt = parseTime(
+          options.getString('publication')
         );
 
         need(
-          p.publishAt > Date.now(),
-          'Escolhe uma publicação futura.',
+          program.publishAt > Date.now(),
+          'Escolhe uma publicação futura.'
         );
       }
 
-      if (o.getChannel('channel')) {
-        p.channelId = o.getChannel('channel').id;
+      if (options.getChannel('channel')) {
+        program.channelId =
+          options.getChannel('channel').id;
       }
 
-      p.channelId ||= i.channelId;
+      program.channelId ||= interaction.channelId;
 
-      if (o.getChannel('salon_matchs')) {
-        p.matchesChannelId =
-          o.getChannel('salon_matchs').id;
+      if (options.getChannel('salon_matchs')) {
+        program.matchesChannelId =
+          options.getChannel('salon_matchs').id;
       }
 
-      p.matchesChannelId ||= p.channelId;
+      program.matchesChannelId ||= program.channelId;
 
-      if (o.getString('texte') !== null) {
-        p.description = o.getString('texte');
-        p.customText = Boolean(p.description.trim());
+      if (options.getString('texte') !== null) {
+        program.description =
+          options.getString('texte');
+
+        program.customText = Boolean(
+          program.description.trim()
+        );
       }
 
-      if (o.getString('image') !== null) {
-        p.imageUrl = imageURL(o.getString('image'));
+      if (options.getString('image') !== null) {
+        program.imageUrl = imageURL(
+          options.getString('image')
+        );
       }
 
-      if (o.getRole('notification')) {
-        p.roleId = o.getRole('notification').id;
-      }
-
-      if (editing && o.getBoolean('retirer_image')) {
-        p.imageUrl = '';
-        p.imageFile = '';
+      if (options.getRole('notification')) {
+        program.roleId =
+          options.getRole('notification').id;
       }
 
       if (
         editing &&
-        o.getBoolean('retirer_notification')
+        options.getBoolean('retirer_image')
       ) {
-        p.roleId = null;
+        program.imageUrl = '';
+        program.imageFile = '';
       }
 
-      if (editing && o.getBoolean('retirer_texte')) {
-        p.description = '';
-        p.customText = false;
+      if (
+        editing &&
+        options.getBoolean('retirer_notification')
+      ) {
+        program.roleId = null;
       }
 
-      const preview = weekCard(s, p);
+      if (
+        editing &&
+        options.getBoolean('retirer_texte')
+      ) {
+        program.description = '';
+        program.customText = false;
+      }
+
+      const preview = weekCard(state, program);
 
       need(
         preview.embeds[0].length <= 6000,
-        'O programa é demasiado longo para o Discord: encurta o texto ou a lista de jogos.',
+        'O programa é demasiado longo para o Discord: encurta o texto ou a lista de jogos.'
       );
 
-      await channel(p.channelId);
-      await channel(p.matchesChannelId);
+      await channel(program.channelId);
+      await channel(program.matchesChannelId);
 
-      if (!old || p.imageUrl !== old.imageUrl) {
-        await cacheImage(p, store.dir);
+      if (
+        !old ||
+        program.imageUrl !== old.imageUrl
+      ) {
+        await cacheImage(program, store.dir);
       }
 
-      await store.change(s => {
+      await store.change(state => {
         if (old) {
-          const latest = s.programs[p.id];
+          const latest =
+            state.programs[program.id];
 
           need(
             latest.version === old.version,
-            'O programa foi alterado. Tenta novamente.',
+            'O programa foi alterado. Tenta novamente.'
           );
 
-          Object.assign(p, {
+          Object.assign(program, {
             published: latest.published,
             status: latest.status,
             messageId: latest.messageId,
@@ -2429,82 +2660,97 @@ async function run() {
           });
         }
 
-        p.version++;
-        p.dirty = true;
-        s.programs[p.id] = p;
+        program.version++;
+        program.dirty = true;
+
+        state.programs[program.id] = program;
       });
 
       void tick();
 
-      return i.editReply(
-        `✅ Programa ${editing ? 'atualizado' : 'criado'}.\nID : \`${p.id}\`\nDe ${p.start} a ${p.end}\nPublicação: ${time(p.publishAt)}\nCanal: <#${p.channelId}>\n${programBlocks(p).length} grupos e ${weekMatches(s, p).length} jogos, independentes dos palpites.\nPara editar os jogos: /edit-week.`,
+      return interaction.editReply(
+        `✅ Programa ${
+          editing ? 'atualizado' : 'criado'
+        }.\n` +
+          `ID: \`${program.id}\`\n` +
+          `De ${program.start} a ${program.end}\n` +
+          `Publicação: ${time(program.publishAt)}\n` +
+          `Canal: <#${program.channelId}>\n` +
+          `${programBlocks(program).length} grupos e ${
+            weekMatches(state, program).length
+          } jogos, independentes dos palpites.\n` +
+          'Para editar os jogos: /edit-week.'
       );
     }
 
-    const s = await store.read();
+    const state = await store.read();
 
     if (name === 'close-match') {
-      const id = i.options.getString('match_id');
+      const id =
+        interaction.options.getString('match_id');
 
-      await store.change(s => {
-        const m = getMatch(s, id);
+      await store.change(state => {
+        const match = getMatch(state, id);
 
         need(
-          m.published,
-          'Este jogo está agendado: utiliza /delete-match para cancelar a publicação.',
+          match.published,
+          'Este jogo está agendado: utiliza /delete-match para cancelar a publicação.'
         );
 
-        m.status = 'closed';
-        m.version++;
-        m.dirty = true;
+        match.status = 'closed';
+        match.version++;
+        match.dirty = true;
       });
 
       void tick();
 
-      return i.editReply(
-        '🔒 Participações encerradas. Os palpites foram mantidos.',
+      return interaction.editReply(
+        '🔒 Participações encerradas. Os palpites foram mantidos.'
       );
     }
 
     if (name === 'set-result') {
-      const id = i.options.getString('match_id');
+      const id =
+        interaction.options.getString('match_id');
 
-      const winners = [1, 2, 3].filter(n =>
-        i.options.getBoolean(`choix${n}`),
+      const winners = [1, 2, 3].filter(number =>
+        interaction.options.getBoolean(
+          `choix${number}`
+        )
       );
 
       need(
-        i.options.getBoolean('annule') ||
+        interaction.options.getBoolean('annule') ||
           winners.length,
-        'Seleciona as opções vencedoras ou annule:true se nenhuma opção ganhar.',
+        'Seleciona as opções vencedoras ou annule:true se nenhuma opção ganhar.'
       );
 
       need(
-        !i.options.getBoolean('annule') ||
+        !interaction.options.getBoolean('annule') ||
           !winners.length,
-        'Um jogo anulado não pode ter uma opção vencedora.',
+        'Um jogo anulado não pode ter uma opção vencedora.'
       );
 
-      await store.change(s => {
-        const m = getMatch(s, id);
+      await store.change(state => {
+        const match = getMatch(state, id);
 
         need(
-          m.published,
-          'Este jogo ainda não foi publicado.',
+          match.published,
+          'Este jogo ainda não foi publicado.'
         );
 
         need(
-          Date.now() >= closeAt(m),
-          'Espera pelo fecho das participações antes de registar o resultado.',
+          Date.now() >= closeAt(match),
+          'Espera pelo fecho das participações antes de registar o resultado.'
         );
 
-        result(s, id, winners);
+        result(state, id, winners);
       });
 
       void tick();
 
-      return i.editReply(
-        '✅ Resultado registado. Os pontos são recalculados sem duplicação, mesmo em caso de correção.',
+      return interaction.editReply(
+        '✅ Resultado registado. Os pontos são recalculados sem duplicação, mesmo em caso de correção.'
       );
     }
 
@@ -2517,105 +2763,137 @@ async function run() {
           ? 'matches'
           : 'programs';
 
-      const id = i.options.getString(
+      const id = interaction.options.getString(
         table === 'matches'
           ? 'match_id'
-          : 'programme_id',
+          : 'programme_id'
       );
 
-      const x = s[table][id];
+      const item = state[table][id];
 
       need(
-        x && x.status !== 'deleted',
-        'Elemento não encontrado.',
+        item && item.status !== 'deleted',
+        'Elemento não encontrado.'
       );
 
-      return ask(i, {
+      return ask(interaction, {
         kind: 'delete',
         table,
         id,
-        version: x.version,
+        version: item.version,
       });
     }
 
     if (name === 'reset-scores') {
-      return ask(i, {
+      return ask(interaction, {
         kind: 'reset',
         fingerprint: digest({
-          matches: s.matches,
-          bets: s.bets,
-          programs: s.programs,
+          matches: state.matches,
+          bets: state.bets,
+          programs: state.programs,
         }),
       });
     }
 
     if (name === 'classement') {
-      return i.editReply(
-        rankCard(s, rangeOptions(i.options)),
+      return interaction.editReply(
+        rankCard(
+          state,
+          rangeOptions(interaction.options)
+        )
       );
     }
 
     if (name === 'list-matches') {
-      const date = i.options.getString('semaine');
+      const date =
+        interaction.options.getString('semaine');
+
       const start = date
         ? monday(dateKey(date))
         : null;
 
-      const items = Object.values(s.matches)
+      const items = Object.values(state.matches)
         .filter(
-          m =>
-            m.status !== 'deleted' &&
-            (
-              !start ||
-              (
-                m.date >= start &&
-                m.date <= shift(start, 6)
-              )
-            ),
+          match =>
+            match.status !== 'deleted' &&
+            (!start ||
+              (match.date >= start &&
+                match.date <= shift(start, 6)))
         )
         .sort(
           (a, b) =>
             a.date.localeCompare(b.date) ||
-            closeAt(a) - closeAt(b),
+            closeAt(a) - closeAt(b)
         );
 
       const lines = items.map(
-        m =>
-          `${m.date} | ${m.title} | ${m.status}\nID: ${m.id}\nPublicação: ${time(m.publishAt)} | Fecho: ${time(closeAt(m))}\n`,
+        match =>
+          `${match.date} | ${match.title} | ${match.status}\n` +
+          `ID: ${match.id}\n` +
+          `Publicação: ${time(match.publishAt)} | Fecho: ${time(
+            closeAt(match)
+          )}\n`
       );
 
       lines.push(
         '\nPROGRAMAS\n',
-        ...Object.values(s.programs)
-          .filter(p => p.status !== 'deleted')
+        ...Object.values(state.programs)
+          .filter(
+            program => program.status !== 'deleted'
+          )
           .map(
-            p =>
-              `${p.start} a ${p.end} | ${p.title}\nID: ${p.id}\n`,
-          ),
+            program =>
+              `${program.start} a ${program.end} | ${program.title}\n` +
+              `ID: ${program.id}\n`
+          )
       );
 
-      return i.editReply({
-        content: `${items.length} MatchDay(s). Os IDs também estão disponíveis no canal da equipa, se estiver configurado.`,
+      return interaction.editReply({
+        content:
+          `${items.length} MatchDay(s). ` +
+          'Os IDs também estão disponíveis no canal da equipa, se estiver configurado.',
         files: [
           new AttachmentBuilder(
             Buffer.from(
-              lines.join('\n') || 'Nenhum jogo',
+              lines.join('\n') || 'Nenhum jogo'
             ),
-            { name: 'matchdays.txt' },
+            { name: 'matchdays.txt' }
           ),
         ],
       });
     }
 
     if (name === 'diagnostic') {
-      return i.editReply(
-        `✅ Dados: ${store.file}\n🕒 Fuso horário: ${TZ}\n⚡ Jornada do boost: do meio-dia ao meio-dia (${TZ})\n📅 ${Object.values(s.matches).filter(m => !m.published && m.status !== 'deleted' && !m.missed).length} jogos por publicar\n📣 ${Object.values(s.programs).filter(p => !p.published && p.status !== 'deleted').length} programas por publicar\n🏆 Sem publicação automática da classificação\n${ICON} Unidade: ${UNIT}`,
+      return interaction.editReply(
+        `✅ Dados: ${store.file}\n` +
+          `🕒 Fuso horário: ${TZ}\n` +
+          `⚡ Jornada do boost: do meio-dia ao meio-dia (${TZ})\n` +
+          `📅 ${
+            Object.values(state.matches).filter(
+              match =>
+                !match.published &&
+                match.status !== 'deleted' &&
+                !match.missed
+            ).length
+          } jogos por publicar\n` +
+          `📣 ${
+            Object.values(state.programs).filter(
+              program =>
+                !program.published &&
+                program.status !== 'deleted'
+            ).length
+          } programas por publicar\n` +
+          '🏆 Sem publicação automática da classificação\n' +
+          `${ICON} Unidade: ${UNIT}`
       );
     }
 
     if (name === 'export') {
-      const r = rangeOptions(i.options);
-      const values = rank(s, r);
+      const range = rangeOptions(
+        interaction.options
+      );
+
+      const values = rank(state, range);
 
       const rows = [
         [
@@ -2631,40 +2909,43 @@ async function run() {
         ],
       ];
 
-      for (const m of Object.values(s.matches)) {
+      for (const match of Object.values(
+        state.matches
+      )) {
         if (
-          m.status === 'deleted' ||
-          (r.start && m.date < r.start) ||
-          (r.end && m.date > r.end)
+          match.status === 'deleted' ||
+          (range.start &&
+            match.date < range.start) ||
+          (range.end && match.date > range.end)
         ) {
           continue;
         }
 
-        for (
-          const [id, b] of Object.entries(
-            s.bets[m.id] || {},
-          )
-        ) {
-          if (b.revision === m.revision) {
-            rows.push([
-              m.id,
-              m.date,
-              m.title,
-              id,
-              b.username,
-              m[`choice${b.choice}Label`],
-              b.boosted ? 'sim' : 'não',
-              earned(m, b),
-              m.result === null
-                ? 'pendente'
-                : m.result.join(',') || 'anulado',
-            ]);
+        for (const [id, bet] of Object.entries(
+          state.bets[match.id] || {}
+        )) {
+          if (bet.revision !== match.revision) {
+            continue;
           }
+
+          rows.push([
+            match.id,
+            match.date,
+            match.title,
+            id,
+            bet.username,
+            match[`choice${bet.choice}Label`],
+            bet.boosted ? 'sim' : 'não',
+            earned(match, bet),
+            match.result === null
+              ? 'pendente'
+              : match.result.join(',') || 'anulado',
+          ]);
         }
       }
 
-      const csv = v =>
-        `"${String(v ?? '')
+      const csv = value =>
+        `"${String(value ?? '')
           .replaceAll('"', '""')
           .replace(/^[=+\-@]/, "'$&")}"`;
 
@@ -2673,46 +2954,53 @@ async function run() {
           Buffer.from(
             '\uFEFF' +
               rows
-                .map(r => r.map(csv).join(';'))
-                .join('\r\n'),
+                .map(row => row.map(csv).join(';'))
+                .join('\r\n')
           ),
-          { name },
+          { name }
         );
 
-      return i.editReply({
-        content: `Export ${r.label}`,
+      return interaction.editReply({
+        content: `Export ${range.label}`,
         files: [
           file(rows, 'pronostics.csv'),
           file(
             [
-              ['rang', 'discord_id', 'pseudo', 'points'],
-              ...values.map((u, n) => [
-                n + 1,
-                u.id,
-                u.name,
-                u.points,
+              [
+                'rang',
+                'discord_id',
+                'pseudo',
+                'points',
+              ],
+              ...values.map((user, index) => [
+                index + 1,
+                user.id,
+                user.name,
+                user.points,
               ]),
             ],
-            'classement.csv',
+            'classement.csv'
           ),
         ],
       });
     }
   }
 
-  async function buttons(i) {
+  async function buttons(interaction) {
     need(
-      i.guildId === guildId,
-      'Servidor inválido.',
+      interaction.guildId === guildId,
+      'Servidor inválido.'
     );
 
     const privateMessage =
-      i.message.flags.has(MessageFlags.Ephemeral);
+      interaction.message.flags.has(
+        MessageFlags.Ephemeral
+      );
 
     if (privateMessage) {
-      await i.deferUpdate();
+      await interaction.deferUpdate();
     } else {
-      await i.deferReply({
+      await interaction.deferReply({
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -2720,125 +3008,153 @@ async function run() {
     let [
       ,
       action,
-      mid,
+      matchId,
       value,
       revision,
       finalRevision,
-    ] = i.customId.split(':');
+    ] = interaction.customId.split(':');
 
-    if (i.customId.startsWith('bet_')) {
-      const a = i.customId.split('_');
+    // Compatibilité avec les anciens boutons.
+    if (
+      interaction.customId.startsWith('bet_')
+    ) {
+      const pieces =
+        interaction.customId.split('_');
+
       action = 'bet';
-      value = a.pop();
-      mid = a.slice(1).join('_');
+      value = pieces.pop();
+      matchId = pieces.slice(1).join('_');
     }
 
-    if (i.customId.startsWith('confirm_')) {
-      const a = i.customId.split('_');
+    if (
+      interaction.customId.startsWith('confirm_')
+    ) {
+      const pieces =
+        interaction.customId.split('_');
+
       action = 'confirm';
-      revision = a.pop();
-      value = a.pop();
-      mid = a.slice(1).join('_');
+      revision = pieces.pop();
+      value = pieces.pop();
+      matchId = pieces.slice(1).join('_');
     }
 
-    if (i.customId === 'cancel_bet') {
+    if (
+      interaction.customId === 'cancel_bet'
+    ) {
       action = 'cancel';
     }
 
     if (action === 'cancel') {
-      return i.editReply({
+      return interaction.editReply({
         content: 'Escolha cancelada.',
         embeds: [],
         components: [],
       });
     }
 
-    if (action === 'yes' || action === 'no') {
-      admin(i);
+    if (
+      action === 'yes' ||
+      action === 'no'
+    ) {
+      admin(interaction);
 
-      await store.change(s => {
-        const p = s.pending[mid];
+      await store.change(state => {
+        const pending =
+          state.pending[matchId];
 
         need(
-          p &&
-            p.uid === i.user.id &&
-            p.expires > Date.now(),
-          'Confirmação expirada. Tenta novamente.',
+          pending &&
+            pending.uid === interaction.user.id &&
+            pending.expires > Date.now(),
+          'Confirmação expirada. Tenta novamente.'
         );
 
         if (action === 'yes') {
-          if (p.kind === 'reset') {
+          if (pending.kind === 'reset') {
             need(
-              p.fingerprint ===
+              pending.fingerprint ===
                 digest({
-                  matches: s.matches,
-                  bets: s.bets,
-                  programs: s.programs,
+                  matches: state.matches,
+                  bets: state.bets,
+                  programs: state.programs,
                 }),
-              'Os dados foram alterados. Executa novamente /reset-scores.',
+              'Os dados foram alterados. Executa novamente /reset-scores.'
             );
 
-            s.archives.push({
+            state.archives.push({
               at: Date.now(),
               kind: 'reset',
-              matches: copy(s.matches),
-              bets: copy(s.bets),
-              users: copy(s.users),
-              programs: copy(s.programs),
-              boosts: copy(s.boosts),
+              matches: copy(state.matches),
+              bets: copy(state.bets),
+              users: copy(state.users),
+              programs: copy(state.programs),
+              boosts: copy(state.boosts),
             });
 
-            for (const table of ['matches', 'programs']) {
-              for (const x of Object.values(s[table])) {
-                x.status = 'deleted';
-                x.version++;
+            for (const table of [
+              'matches',
+              'programs',
+            ]) {
+              for (const item of Object.values(
+                state[table]
+              )) {
+                item.status = 'deleted';
+                item.version++;
               }
             }
 
-            s.users = {};
-            s.bets = {};
-            s.boosts = {};
+            state.users = {};
+            state.bets = {};
+            state.boosts = {};
           } else {
-            const x = s[p.table][p.id];
+            const item =
+              state[pending.table][pending.id];
 
             need(
-              x && x.version === p.version,
-              'Este elemento foi alterado. Tenta novamente.',
+              item &&
+                item.version === pending.version,
+              'Este elemento foi alterado. Tenta novamente.'
             );
 
-            s.archives.push({
+            state.archives.push({
               at: Date.now(),
               kind: 'delete',
-              table: p.table,
-              data: copy(x),
+              table: pending.table,
+              data: copy(item),
               bets:
-                p.table === 'matches'
-                  ? copy(s.bets[x.id] || {})
+                pending.table === 'matches'
+                  ? copy(
+                      state.bets[item.id] || {}
+                    )
                   : undefined,
             });
 
-            x.status = 'deleted';
-            x.version++;
-            x.dirty = true;
+            item.status = 'deleted';
+            item.version++;
+            item.dirty = true;
 
-            for (const u of Object.values(s.users)) {
-              u.totalPoints = 0;
+            for (const user of Object.values(
+              state.users
+            )) {
+              user.totalPoints = 0;
             }
 
-            for (const r of rank(s)) {
-              if (s.users[r.id]) {
-                s.users[r.id].totalPoints = r.points;
+            for (const entry of rank(state)) {
+              if (state.users[entry.id]) {
+                state.users[
+                  entry.id
+                ].totalPoints = entry.points;
               }
             }
           }
         }
 
-        delete s.pending[mid];
+        delete state.pending[matchId];
       });
 
       void tick();
 
-      return i.editReply({
+      return interaction.editReply({
         content:
           action === 'yes'
             ? '✅ Operação confirmada.'
@@ -2848,42 +3164,57 @@ async function run() {
       });
     }
 
-    const s = await store.read();
+    const state = await store.read();
 
     if (action === 'week') {
-      const p = s.programs[mid];
+      const program =
+        state.programs[matchId];
 
       need(
-        p &&
-          p.published &&
-          p.status !== 'deleted',
-        'Programa indisponível.',
+        program &&
+          program.published &&
+          program.status !== 'deleted',
+        'Programa indisponível.'
       );
 
-      return i.editReply(weekCard(s, p, value));
+      return interaction.editReply(
+        weekCard(state, program)
+      );
     }
 
     if (action === 'rank') {
-      const r =
-        mid === 'all'
+      const range =
+        matchId === 'all'
           ? { label: 'geral' }
           : {
-              start: mid,
+              start: matchId,
               end: value,
-              label: `de ${mid} a ${value}`,
+              label: `de ${matchId} a ${value}`,
             };
 
-      return i.editReply(rankCard(s, r, revision));
+      return interaction.editReply(
+        rankCard(state, range, revision)
+      );
     }
 
-    const m = getMatch(s, mid);
+    const match = getMatch(state, matchId);
 
     if (action === 'my') {
-      return i.editReply(myCard(s, m, i.user.id));
+      return interaction.editReply(
+        myCard(
+          state,
+          match,
+          interaction.user.id
+        )
+      );
     }
 
-    if (s.bets[mid]?.[i.user.id]) {
-      return i.editReply({
+    if (
+      state.bets[matchId]?.[
+        interaction.user.id
+      ]
+    ) {
+      return interaction.editReply({
         content:
           '✅ O teu palpite já foi registado. Para o consultares, clica em « 📋 A minha escolha ».',
         embeds: [],
@@ -2893,186 +3224,240 @@ async function run() {
     }
 
     need(
-      isOpen(m),
-      'As participações estão encerradas.',
+      isOpen(match),
+      'As participações estão encerradas.'
     );
 
-    const n = Number(value);
+    const number = Number(value);
 
-    need(BASE[n], 'Opção inválida.');
+    need(BASE[number], 'Opção inválida.');
 
     if (action === 'bet') {
       need(
         !revision ||
-          Number(revision) === m.revision,
-        'O jogo foi alterado. Utiliza a mensagem atualizada.',
+          Number(revision) === match.revision,
+        'O jogo foi alterado. Utiliza a mensagem atualizada.'
       );
 
-      const boost = boostAvailable(s, i.user.id);
+      const boost = boostAvailable(
+        state,
+        interaction.user.id
+      );
 
-      const e = embed('Confirma o teu palpite')
+      const card = embed('Confirma o teu palpite')
         .setDescription(
           [
-            `**${safe(m.title)}**`,
+            `**${safe(match.title)}**`,
             '',
-            `${EMOJIS[n]} **${safe(m['choice' + n + 'Label'])}**`,
+            `${EMOJIS[number]} **${safe(
+              match[
+                'choice' + number + 'Label'
+              ]
+            )}**`,
             '',
-            `${ICON} **${BASE[n]} ${UNIT}** se a tua escolha for vencedora.`,
+            `${ICON} **${BASE[number]} ${UNIT}** se a tua escolha for vencedora.`,
             '',
             boost
-              ? `⚡ Com o boost x2: **${BASE[n] * 2} ${UNIT}**.`
+              ? `⚡ Com o boost x2: **${
+                  BASE[number] * 2
+                } ${UNIT}**.`
               : 'Já utilizaste o boost desta jornada.',
             '',
             'Depois de confirmado, o teu palpite não pode ser alterado.',
-          ].join('\n'),
+          ].join('\n')
         );
 
-      const buttons = [
+      const controls = [
         button(
-          `md:confirm:${mid}:${n}:0:${m.revision}`,
+          `md:confirm:${matchId}:${number}:0:${match.revision}`,
           '✅ Confirmar',
-          ButtonStyle.Success,
+          ButtonStyle.Success
         ),
       ];
 
       if (boost) {
-        buttons.push(
+        controls.push(
           button(
-            `md:confirm:${mid}:${n}:1:${m.revision}`,
+            `md:confirm:${matchId}:${number}:1:${match.revision}`,
             '⚡ Confirmar + Boost x2',
-            ButtonStyle.Primary,
-          ),
+            ButtonStyle.Primary
+          )
         );
       }
 
-      buttons.push(button('md:cancel', 'Cancelar'));
+      controls.push(
+        button('md:cancel', 'Cancelar')
+      );
 
-      return i.editReply({
+      return interaction.editReply({
         content: '',
-        embeds: [e],
-        components: [row(...buttons)],
+        embeds: [card],
+        components: [row(...controls)],
       });
     }
 
     if (action === 'confirm') {
-      await store.change(s =>
+      await store.change(state =>
         place(
-          s,
-          mid,
-          i.user.id,
-          n,
+          state,
+          matchId,
+          interaction.user.id,
+          number,
           revision === '1',
-          Number(finalRevision || m.revision),
-          i.user.username,
-        ),
+          Number(
+            finalRevision || match.revision
+          ),
+          interaction.user.username
+        )
       );
 
       const latest = await store.read();
 
-      return i.editReply(
+      return interaction.editReply(
         myCard(
           latest,
-          getMatch(latest, mid),
-          i.user.id,
-        ),
+          getMatch(latest, matchId),
+          interaction.user.id
+        )
       );
     }
   }
 
-  client.on(Events.InteractionCreate, async i => {
-    if (stopping) return;
+  client.on(
+    Events.InteractionCreate,
+    async interaction => {
+      if (stopping) return;
 
-    if (
-      !(
-        i.isChatInputCommand() &&
-        commands.some(c => c.name === i.commandName)
-      ) &&
-      !(
-        i.isButton() &&
-        /^(md:|bet_|confirm_|cancel_bet$)/.test(i.customId)
-      )
-    ) {
-      return;
-    }
+      const recognizedCommand =
+        interaction.isChatInputCommand() &&
+        commands.some(
+          command =>
+            command.name === interaction.commandName
+        );
 
-    try {
-      if (i.isChatInputCommand()) {
-        await slash(i);
-      } else {
-        await buttons(i);
+      const recognizedButton =
+        interaction.isButton() &&
+        /^(md:|bet_|confirm_|cancel_bet$)/.test(
+          interaction.customId
+        );
+
+      if (
+        !recognizedCommand &&
+        !recognizedButton
+      ) {
+        return;
       }
-    } catch (e) {
-      if (!(e instanceof UserError)) {
-        log('Interaction', e);
-      }
-
-      const payload = {
-        content:
-          e instanceof UserError
-            ? `⚠️ ${e.message}`
-            : 'Ocorreu um erro. Consulta os registos do bot.',
-        allowedMentions: quiet,
-      };
 
       try {
-        if (i.deferred || i.replied) {
-          if (i.isButton() || i.ephemeral) {
-            await i.editReply({
-              ...payload,
-              embeds: [],
-              components: [],
-            });
+        if (
+          interaction.isChatInputCommand()
+        ) {
+          await slash(interaction);
+        } else {
+          await buttons(interaction);
+        }
+      } catch (error) {
+        if (!(error instanceof UserError)) {
+          log('Interação', error);
+        }
+
+        const payload = {
+          content:
+            error instanceof UserError
+              ? `⚠️ ${error.message}`
+              : 'Ocorreu um erro. Consulta os registos do bot.',
+          allowedMentions: quiet,
+        };
+
+        try {
+          if (
+            interaction.deferred ||
+            interaction.replied
+          ) {
+            if (
+              interaction.isButton() ||
+              interaction.ephemeral
+            ) {
+              await interaction.editReply({
+                ...payload,
+                embeds: [],
+                components: [],
+              });
+            } else {
+              await interaction.followUp({
+                ...payload,
+                flags: MessageFlags.Ephemeral,
+              });
+            }
           } else {
-            await i.followUp({
+            await interaction.reply({
               ...payload,
               flags: MessageFlags.Ephemeral,
             });
           }
-        } else {
-          await i.reply({
-            ...payload,
-            flags: MessageFlags.Ephemeral,
-          });
-        }
-      } catch (e) {
-        log('Resposta de erro', e);
-      }
-    }
-  });
-
-  client.on(Events.Error, e => log('Discord', e));
-
-  client.once(Events.ClientReady, async () => {
-    try {
-      const guild = await client.guilds.fetch(guildId);
-
-      if (staffId) await channel(staffId);
-
-      for (const c of commands) {
-        await guild.commands.create(c.toJSON());
-      }
-
-      const globals =
-        await client.application.commands.fetch();
-
-      for (const c of globals.values()) {
-        if (commands.some(x => x.name === c.name)) {
-          await client.application.commands.delete(c.id);
+        } catch (replyError) {
+          log(
+            'Resposta de erro',
+            replyError
+          );
         }
       }
-
-      console.log(
-        `MatchDay pronto: ${client.user.tag}. Fuso horário: ${TZ}. Dados: ${store.file}.`,
-      );
-
-      await tick();
-
-      timer = setInterval(() => void tick(), 15000);
-    } catch (e) {
-      log('Inicialização', e);
-      void stop(1);
     }
-  });
+  );
+
+  client.on(
+    Events.Error,
+    error => log('Discord', error)
+  );
+
+  client.once(
+    Events.ClientReady,
+    async () => {
+      try {
+        const guild =
+          await client.guilds.fetch(guildId);
+
+        if (staffId) await channel(staffId);
+
+        for (const command of commands) {
+          await guild.commands.create(
+            command.toJSON()
+          );
+        }
+
+        const globals =
+          await client.application.commands.fetch();
+
+        for (const command of globals.values()) {
+          if (
+            commands.some(
+              item => item.name === command.name
+            )
+          ) {
+            await client.application.commands.delete(
+              command.id
+            );
+          }
+        }
+
+        console.log(
+          `MatchDay pronto: ${client.user.tag}. ` +
+            `Fuso horário: ${TZ}. ` +
+            `Dados: ${store.file}.`
+        );
+
+        await tick();
+
+        timer = setInterval(
+          () => void tick(),
+          15000
+        );
+      } catch (error) {
+        log('Inicialização', error);
+        void stop(1);
+      }
+    }
+  );
 
   async function stop(code = 0) {
     if (stopping) return;
@@ -3080,22 +3465,37 @@ async function run() {
     stopping = true;
     clearInterval(timer);
     client.destroy();
+
     await store.queue;
+
     process.exit(code);
   }
 
-  process.once('SIGINT', () => void stop());
-  process.once('SIGTERM', () => void stop());
+  process.once(
+    'SIGINT',
+    () => void stop()
+  );
 
-  process.once('uncaughtException', e => {
-    log('Erro fatal', e);
-    void stop(1);
-  });
+  process.once(
+    'SIGTERM',
+    () => void stop()
+  );
 
-  process.once('unhandledRejection', e => {
-    log('Erro fatal', e);
-    void stop(1);
-  });
+  process.once(
+    'uncaughtException',
+    error => {
+      log('Erro fatal', error);
+      void stop(1);
+    }
+  );
+
+  process.once(
+    'unhandledRejection',
+    error => {
+      log('Erro fatal', error);
+      void stop(1);
+    }
+  );
 
   await client.login(env.DISCORD_TOKEN);
 }
@@ -3104,9 +3504,13 @@ if (
   require.main === module ||
   process.env.MATCHDAY_ENTRYPOINT === 'src'
 ) {
-  run().catch(e => {
+  run().catch(error => {
     console.error(
-      `Arranque: ${e instanceof UserError ? e.message : e.code || e.name}`,
+      `Arranque: ${
+        error instanceof UserError
+          ? error.message
+          : error.code || error.name
+      }`
     );
 
     process.exitCode = 1;
